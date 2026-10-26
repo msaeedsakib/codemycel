@@ -1,0 +1,10 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# codemycel's own index when dogfooding
+/.codemycel/
+
+# Editors / OS
+.DS_Store
+*.swp
