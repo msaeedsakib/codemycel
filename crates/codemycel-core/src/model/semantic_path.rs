@@ -235,7 +235,9 @@ fn scan(text: &str) -> Scan<'_> {
             i += 1;
             continue;
         }
-        if let Some(len) = char_literal_len(&text[i..]) {
+        if bytes[i] == b'\''
+            && let Some(len) = char_literal_len(&text[i..])
+        {
             i += len;
             continue;
         }
