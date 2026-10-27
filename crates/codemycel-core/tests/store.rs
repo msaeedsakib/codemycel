@@ -314,6 +314,53 @@ fn insert_nodes_rejects_unknown_file() {
 }
 
 #[test]
+fn file_root_change_moves_node_and_edge_roots() {
+    let (_dir, _db, mut store) = fresh();
+    let file = "apps/web/a.ts";
+    let f = node("apps/web/a.ts::f", NodeKind::Function, file, (1, 3));
+    let g = node("apps/web/a.ts::g", NodeKind::Function, file, (5, 7));
+    let new_root = store
+        .transaction(|tx| {
+            let old_root = tx.set_root(&Root {
+                path: repo(""),
+                language: Language::TypeScript,
+            })?;
+            tx.upsert_file(&file_record(file, Some(old_root)))?;
+            tx.insert_nodes(&[f.clone(), g.clone()])?;
+            let new_root = tx.set_root(&Root {
+                path: repo("apps/web"),
+                language: Language::TypeScript,
+            })?;
+            tx.upsert_file(&file_record(file, Some(new_root)))?;
+            tx.insert_edges(&[edge(f.node_ref(), EdgeKind::Calls, g.node_ref(), &[(2, 4)])])?;
+            Ok::<_, StoreError>(new_root)
+        })
+        .unwrap();
+
+    let stored_file = store.file_by_path(&repo(file)).unwrap().unwrap();
+    assert_eq!(stored_file.record.root_id, Some(new_root));
+    let nodes = store.nodes_in_file(&repo(file)).unwrap();
+    assert_eq!(nodes.len(), 2);
+    assert!(nodes.iter().all(|n| n.root_id == Some(new_root)));
+    let calls = store.edges_from(nodes[0].id, &[EdgeKind::Calls]).unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].root_id, Some(new_root));
+
+    store
+        .transaction(|tx| tx.upsert_file(&file_record(file, None)))
+        .unwrap();
+    assert!(
+        store
+            .nodes_in_file(&repo(file))
+            .unwrap()
+            .iter()
+            .all(|n| n.root_id.is_none())
+    );
+    let calls = store.edges_from(nodes[0].id, &[EdgeKind::Calls]).unwrap();
+    assert_eq!(calls[0].root_id, None);
+}
+
+#[test]
 fn edge_upsert_merges_occurrences() {
     let (_dir, _db, mut store) = fresh();
     let main = node_ref("src/b.rs::main", NodeKind::Function);
