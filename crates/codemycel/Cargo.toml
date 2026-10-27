@@ -1,0 +1,27 @@
+[package]
+name = "codemycel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+codemycel-core.workspace = true
+codemycel-index.workspace = true
+codemycel-mcp.workspace = true
+codemycel-ui.workspace = true
+
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+blake3.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true
