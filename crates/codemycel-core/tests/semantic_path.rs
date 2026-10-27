@@ -170,6 +170,16 @@ fn file_segment_is_literal_and_quoted_names_are_opaque() {
 }
 
 #[test]
+fn non_ascii_containers_and_names_round_trip() {
+    let path =
+        SemanticPath::symbol(&repo("src/a.ts"), &["Größe", "W<'é'>"], "naïve", None).unwrap();
+    assert_eq!(path.containers(), vec!["Größe", "W<'é'>"]);
+    assert_eq!(path.name(), "naïve");
+    assert_eq!(round_trip("src/a.rs::café").name(), "café");
+    assert_eq!(round_trip("src/a.ts::π").name(), "π");
+}
+
+#[test]
 fn qualified_inherent_self_types_use_angle_brackets() {
     for self_type in ["<super::Foo>", "<crate::outer::Foo>", "<dyn crate::Tr>"] {
         let path = SemanticPath::symbol(&repo("src/x.rs"), &[self_type], "new", None).unwrap();
