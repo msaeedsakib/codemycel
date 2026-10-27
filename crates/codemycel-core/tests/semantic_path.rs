@@ -137,6 +137,27 @@ fn const_generic_containers_keep_their_brackets() {
 }
 
 #[test]
+fn file_segment_is_literal_and_quoted_names_are_opaque() {
+    for file in [
+        "src/[id.ts",
+        "src/a(1.ts",
+        "src/a<b.ts",
+        "app/(group)/[slug]/page.tsx",
+    ] {
+        let path = SemanticPath::symbol(&repo(file), &["Foo"], "f", None).unwrap();
+        assert_eq!(path.file(), Some(file));
+        assert_eq!(path.containers(), vec!["Foo"]);
+        assert_eq!(path.name(), "f");
+    }
+    let quoted = SemanticPath::symbol(&repo("src/a.ts"), &["Foo"], "\"<::>\"", None).unwrap();
+    assert_eq!(quoted.containers(), vec!["Foo"]);
+    assert_eq!(quoted.name(), "\"<::>\"");
+    let lifetime =
+        SemanticPath::symbol(&repo("src/a.rs"), &["<Foo<'a> as Trait>"], "m", None).unwrap();
+    assert_eq!(lifetime.containers(), vec!["<Foo<'a> as Trait>"]);
+}
+
+#[test]
 fn qualified_inherent_self_types_use_angle_brackets() {
     for self_type in ["<super::Foo>", "<crate::outer::Foo>", "<dyn crate::Tr>"] {
         let path = SemanticPath::symbol(&repo("src/x.rs"), &[self_type], "new", None).unwrap();

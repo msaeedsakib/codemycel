@@ -164,8 +164,7 @@ impl SemanticPath {
         if let Some(uuid) = text.strip_prefix(NOTE) {
             return Form::Note(uuid);
         }
-        let mut segments = scan(text).segments;
-        if segments.len() == 1 {
+        let Some((file, rest)) = text.split_once("::") else {
             return match text.rsplit_once('#') {
                 Some((doc, rest)) if is_doc(doc) => {
                     let (slug, disambiguator) = split_suffix(rest);
@@ -177,10 +176,10 @@ impl SemanticPath {
                 }
                 _ => Form::Path(text),
             };
-        }
+        };
+        let mut segments = scan(rest).segments;
         let last = segments.pop().unwrap_or_default();
         let (name, disambiguator) = split_suffix(last);
-        let file = segments.remove(0);
         Form::Symbol {
             file,
             containers: segments,
@@ -214,18 +213,30 @@ struct Scan<'a> {
     balanced: bool,
 }
 
-/// Splits on `::` outside brackets. Angle brackets count only outside `()`, `[]`, and `{}`, so a
+/// Splits the container and name segments on `::` outside brackets and double-quoted strings
+/// (TS string-literal member names). Angle brackets count only outside `()`, `[]`, and `{}`, so a
 /// comparison inside a const-generic block does not open one; the `>` of `->` never closes one.
 fn scan(text: &str) -> Scan<'_> {
     let bytes = text.as_bytes();
     let mut segments = Vec::new();
     let mut stack: Vec<u8> = Vec::new();
     let mut balanced = true;
+    let mut in_string = false;
     let mut start = 0;
     let mut i = 0;
     while i < bytes.len() {
+        if in_string {
+            match bytes[i] {
+                b'\\' => i += 1,
+                b'"' => in_string = false,
+                _ => {}
+            }
+            i += 1;
+            continue;
+        }
         let angles_count = matches!(stack.last(), None | Some(b'<'));
         match bytes[i] {
+            b'"' => in_string = true,
             b'(' | b'[' | b'{' => stack.push(bytes[i]),
             b'<' if angles_count => stack.push(b'<'),
             b'>' if i > 0 && bytes[i - 1] == b'-' => {}
@@ -257,7 +268,7 @@ fn scan(text: &str) -> Scan<'_> {
     segments.push(&text[start..]);
     Scan {
         segments,
-        balanced: balanced && stack.is_empty(),
+        balanced: balanced && stack.is_empty() && !in_string,
     }
 }
 
@@ -297,9 +308,12 @@ impl FromStr for SemanticPath {
             }
             Form::Path(path) => !path.is_empty(),
             Form::Heading { doc, slug, .. } => !doc.is_empty() && !slug.is_empty(),
-            Form::Symbol { .. } => {
-                let scan = scan(text);
-                scan.balanced && scan.segments.iter().all(|segment| !segment.is_empty())
+            Form::Symbol { file, .. } => {
+                let rest = &text[file.len() + 2..];
+                let scan = scan(rest);
+                !file.is_empty()
+                    && scan.balanced
+                    && scan.segments.iter().all(|segment| !segment.is_empty())
             }
         };
         if !valid {
