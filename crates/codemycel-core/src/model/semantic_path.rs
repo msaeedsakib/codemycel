@@ -88,6 +88,8 @@ impl SemanticPath {
         )
     }
 
+    /// Fails for paths that read as another form (`a::b.rs`, `community:x`, `a.md#x`); such files
+    /// are listed with `SkipReason::UnaddressablePath` instead of becoming nodes.
     pub fn for_file(path: &RepoPath) -> Result<Self, ModelError> {
         Self::checked(path.as_str().to_owned(), Form::Path(path.as_str()))
     }

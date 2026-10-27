@@ -19,11 +19,23 @@ pub enum Arch {
 
 /// How the enricher decides a server has loaded its project (spec §7.5 step 2).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Readiness {
+pub enum ReadinessStrategy {
     /// Wait for `experimental/serverStatus` with `quiescent: true`; degrade the root on timeout.
     WaitForQuiescent { timeout: Duration },
     /// Retry `textDocument/definition` until non-empty; proceed either way after the timeout.
     ProbeDefinition { timeout: Duration },
+}
+
+/// A language toolchain that can supply the server (spec §3, §7.4 step 2), so the provisioner
+/// runs these commands without naming a language.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Toolchain {
+    /// Binary the language's roots need; when absent they degrade (spec §7.6).
+    pub prerequisite: &'static str,
+    /// Prints the server binary's path, e.g. `rustup which rust-analyzer`.
+    pub locate: &'static [&'static str],
+    /// Installs the server through the toolchain, e.g. `rustup component add rust-analyzer`.
+    pub install: &'static [&'static str],
 }
 
 /// The language-server half of a language (spec §7.1, §7.4, §7.5).
@@ -34,6 +46,9 @@ pub trait ServerAdapter: Send + Sync {
     fn name(&self) -> &'static str;
 
     fn pinned_version(&self) -> &'static str;
+
+    /// `None` when the language has no toolchain to consult; lookup then goes to `PATH`.
+    fn toolchain(&self) -> Option<Toolchain>;
 
     /// `None` when there is no release asset for the target.
     fn download_url(&self, os: Os, arch: Arch) -> Option<String>;
@@ -51,7 +66,7 @@ pub trait ServerAdapter: Send + Sync {
 
     fn initialization_options(&self, config: &ServerConfig) -> serde_json::Value;
 
-    fn readiness(&self) -> Readiness;
+    fn readiness(&self) -> ReadinessStrategy;
 
     /// Requests in flight per server.
     fn request_concurrency(&self) -> usize;

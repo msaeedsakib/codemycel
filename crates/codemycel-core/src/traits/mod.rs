@@ -6,7 +6,7 @@ mod server_adapter;
 pub use language_adapter::{AdapterError, LanguageAdapter};
 pub use ranker::{Ranker, ScoredHit, SearchHit};
 pub use resolver::Resolver;
-pub use server_adapter::{Arch, Os, Readiness, ServerAdapter};
+pub use server_adapter::{Arch, Os, ReadinessStrategy, ServerAdapter, Toolchain};
 
 #[cfg(test)]
 mod tests {
@@ -73,6 +73,9 @@ mod tests {
         fn pinned_version(&self) -> &'static str {
             "0"
         }
+        fn toolchain(&self) -> Option<Toolchain> {
+            None
+        }
         fn download_url(&self, _: Os, _: Arch) -> Option<String> {
             None
         }
@@ -91,8 +94,8 @@ mod tests {
         fn initialization_options(&self, _: &ServerConfig) -> serde_json::Value {
             serde_json::Value::Null
         }
-        fn readiness(&self) -> Readiness {
-            Readiness::ProbeDefinition {
+        fn readiness(&self) -> ReadinessStrategy {
+            ReadinessStrategy::ProbeDefinition {
                 timeout: Duration::from_secs(60),
             }
         }

@@ -136,7 +136,8 @@ string_enum!(FileKind {
 });
 
 string_enum!(
-    /// Why a file was listed but not parsed (spec §7.2, §8.2).
+    /// Why a file was listed but not parsed (spec §7.2, §8.2). `unaddressable_path` marks a path
+    /// with no semantic-path form (`a::b.rs`, `community:x`, `a.md#x`).
     SkipReason {
         Ignored => "ignored",
         Binary => "binary",
@@ -144,6 +145,7 @@ string_enum!(
         InvalidUtf8 => "invalid_utf8",
         Unsupported => "unsupported",
         NoRoot => "no_root",
+        UnaddressablePath => "unaddressable_path",
     }
 );
 
