@@ -24,7 +24,8 @@ impl Store {
         Ok(Self { conn, commits: 0 })
     }
 
-    /// Opens an existing database. A different `schema_version` is `StoreError::SchemaMismatch`.
+    /// Opens an existing database. A different `schema_version`, or a file that is not a SQLite
+    /// database, is `StoreError::SchemaMismatch`; either way the caller rebuilds.
     pub fn open(db_path: &Path, read_only: bool) -> Result<Self> {
         let access = if read_only {
             OpenFlags::SQLITE_OPEN_READ_ONLY
@@ -35,7 +36,17 @@ impl Store {
             db_path,
             access | OpenFlags::SQLITE_OPEN_NO_MUTEX | OpenFlags::SQLITE_OPEN_URI,
         )?;
-        check_version(&conn)?;
+        match check_version(&conn) {
+            Err(StoreError::Sqlite(error))
+                if error.sqlite_error_code() == Some(rusqlite::ErrorCode::NotADatabase) =>
+            {
+                return Err(StoreError::SchemaMismatch {
+                    found: "not a database".to_owned(),
+                    expected: SCHEMA_VERSION,
+                });
+            }
+            result => result?,
+        }
         configure(&conn, read_only)?;
         Ok(Self { conn, commits: 0 })
     }

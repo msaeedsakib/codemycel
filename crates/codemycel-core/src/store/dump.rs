@@ -45,15 +45,18 @@ pub(super) fn nodes(conn: &Connection) -> Result<String> {
 pub(super) fn edges(conn: &Connection) -> Result<String> {
     sorted_lines(
         conn,
-        "SELECT s.semantic_path, e.kind, d.semantic_path, json_array_length(e.occurrences)
+        "SELECT s.semantic_path, s.kind, e.kind, d.semantic_path, d.kind,
+                json_array_length(e.occurrences)
          FROM edges e JOIN nodes s ON s.id = e.src JOIN nodes d ON d.id = e.dst",
         |row| {
             Ok(format!(
-                "{}\t{}\t{}\t{}",
+                "{} ({})\t{}\t{} ({})\t{}",
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?
             ))
         },
     )

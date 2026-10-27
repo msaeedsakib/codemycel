@@ -105,7 +105,7 @@ fn status_reads_counts_from_created_store() {
                 scip_covered: false,
             })?;
             tx.insert_nodes(&[Node {
-                path: SemanticPath::for_file(&path),
+                path: SemanticPath::for_file(&path).unwrap(),
                 kind: NodeKind::File,
                 name: "main.rs".into(),
                 file: Some(path.clone()),

@@ -105,14 +105,35 @@ fn community_and_note_paths() {
 
 #[test]
 fn file_and_package_paths() {
-    let file = SemanticPath::for_file(&repo("src/main.rs"));
+    let file = SemanticPath::for_file(&repo("src/main.rs")).unwrap();
     assert_eq!(file.to_string(), "src/main.rs");
     assert_eq!(file.file(), Some("src/main.rs"));
     assert_eq!(file.name(), "src/main.rs");
     assert_eq!(round_trip("src/main.rs"), file);
 
-    let package = SemanticPath::for_package(&repo("crates/core"));
-    assert_eq!(package.to_string(), "crates/core");
+    let root_package = SemanticPath::for_package("Cargo.toml").unwrap();
+    assert_eq!(root_package.to_string(), "Cargo.toml");
+    assert_eq!(SemanticPath::for_package("serde").unwrap().name(), "serde");
+    assert!(SemanticPath::for_package("").is_err());
+    assert!(SemanticPath::for_file(&repo("")).is_err());
+}
+
+#[test]
+fn hashes_in_file_paths_are_not_headings() {
+    let file = SemanticPath::for_file(&repo("docs/C#/intro.md")).unwrap();
+    assert_eq!(file.file(), Some("docs/C#/intro.md"));
+    assert_eq!(file.name(), "docs/C#/intro.md");
+    assert!(SemanticPath::for_file(&repo("src/#weird#")).is_ok());
+    assert!(SemanticPath::for_file(&repo("docs/a.md#b")).is_err());
+    assert!(SemanticPath::for_file(&repo("a::b.md")).is_err());
+}
+
+#[test]
+fn const_generic_containers_keep_their_brackets() {
+    let path = SemanticPath::symbol(&repo("f.rs"), &["Foo<{ A < B }>"], "m", None).unwrap();
+    assert_eq!(path.containers(), vec!["Foo<{ A < B }>"]);
+    assert_eq!(path.name(), "m");
+    assert!(SemanticPath::symbol(&repo("f.rs"), &["Foo<"], "bar", None).is_err());
 }
 
 #[test]
@@ -120,7 +141,9 @@ fn display_is_stable_across_platforms() {
     let built = SemanticPath::symbol(&repo(r"src\db\store.rs"), &["Store"], "open", None).unwrap();
     assert_eq!(built.to_string(), "src/db/store.rs::Store::open");
     assert_eq!(
-        SemanticPath::for_file(&repo(r".\src\db\store.rs")).to_string(),
+        SemanticPath::for_file(&repo(r".\src\db\store.rs"))
+            .unwrap()
+            .to_string(),
         "src/db/store.rs"
     );
 }
@@ -130,8 +153,12 @@ fn names_with_separators_are_rejected() {
     assert!(SemanticPath::symbol(&repo("a.rs"), &[] as &[&str], "a::b", None).is_err());
     assert!(SemanticPath::symbol(&repo("a.rs"), &[] as &[&str], "", None).is_err());
     assert!(SemanticPath::symbol(&repo("a.rs"), &["Foo"], "f[2]", None).is_err());
+    assert!(SemanticPath::symbol(&repo(""), &[] as &[&str], "x", None).is_err());
+    assert!(SemanticPath::heading(&repo("a.md"), "step[1]", None).is_err());
+    assert!(SemanticPath::heading(&repo(""), "x", None).is_err());
     assert!("a.rs::".parse::<SemanticPath>().is_err());
     assert!("".parse::<SemanticPath>().is_err());
+    assert_eq!(round_trip("a.ts::f[01]").name(), "f[01]");
 }
 
 #[test]
@@ -143,5 +170,7 @@ fn repo_paths_are_normalised_and_relative() {
     assert!(RepoPath::new("/etc/passwd").is_err());
     assert!(RepoPath::new(r"C:\src\a.rs").is_err());
     assert!(RepoPath::new(r"\\server\share\a.rs").is_err());
+    assert!(RepoPath::new("C:").is_err());
+    assert_eq!(repo("a:b.txt").as_str(), "a:b.txt");
     assert!(RepoPath::new("src/../../a.rs").is_err());
 }

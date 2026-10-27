@@ -138,8 +138,11 @@ string_enum!(FileKind {
 string_enum!(
     /// Why a file was listed but not parsed (spec §7.2, §8.2).
     SkipReason {
+        Ignored => "ignored",
         Binary => "binary",
-        TooLarge => "too_large",
+        Oversize => "oversize",
+        InvalidUtf8 => "invalid_utf8",
+        Unsupported => "unsupported",
         NoRoot => "no_root",
     }
 );

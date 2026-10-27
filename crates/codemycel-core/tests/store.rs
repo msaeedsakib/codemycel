@@ -257,6 +257,17 @@ fn schema_mismatch_triggers_rebuild() {
         }
         other => panic!("expected SchemaMismatch, got {other:?}"),
     }
+
+    let garbage = db.with_file_name("garbage.db");
+    std::fs::write(
+        &garbage,
+        b"this is not a sqlite database, just text padding it out",
+    )
+    .unwrap();
+    assert!(matches!(
+        Store::open(&garbage, true),
+        Err(StoreError::SchemaMismatch { .. })
+    ));
 }
 
 #[test]
@@ -473,10 +484,10 @@ fn dumps_are_sorted_and_stable() {
     );
     assert_eq!(
         forward.dump_edges().unwrap(),
-        "src/a.rs\tcontains\tsrc/a.rs::Foo\t0\n\
-         src/a.rs::Foo\tcontains\tsrc/a.rs::Foo::new\t0\n\
-         src/b.rs::main\tcalls\tsrc/a.rs::Foo::new\t1\n\
-         src/b.rs::main\treferences\tsrc/a.rs::Foo\t2\n"
+        "src/a.rs (file)\tcontains\tsrc/a.rs::Foo (struct)\t0\n\
+         src/a.rs::Foo (struct)\tcontains\tsrc/a.rs::Foo::new (method)\t0\n\
+         src/b.rs::main (function)\tcalls\tsrc/a.rs::Foo::new (method)\t1\n\
+         src/b.rs::main (function)\treferences\tsrc/a.rs::Foo (struct)\t2\n"
     );
     assert_eq!(
         forward.dump_unresolved().unwrap(),
