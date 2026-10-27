@@ -219,6 +219,16 @@ fn qualified_inherent_self_types_use_angle_brackets() {
         assert_eq!(path.name(), "new");
     }
     assert!(SemanticPath::symbol(&repo("src/x.rs"), &["super::Foo"], "new", None).is_err());
+
+    let parsed = round_trip("src/x.rs::<super::Foo>::new");
+    assert_eq!(parsed.file(), Some("src/x.rs"));
+    assert_eq!(parsed.containers(), vec!["<super::Foo>"]);
+    assert_eq!(parsed.name(), "new");
+    assert_eq!(
+        SemanticPath::symbol(&repo("src/x.rs"), &["<super::Foo>"], "new", None).unwrap(),
+        parsed
+    );
+    assert_eq!(round_trip("src/x.rs::Foo::new").containers(), vec!["Foo"]);
 }
 
 #[test]

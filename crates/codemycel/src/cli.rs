@@ -209,6 +209,7 @@ pub struct NoteArgs {
     /// A name, file path, `community:<id>`, package name, or `repo`
     pub target: String,
     /// Markdown body
+    #[arg(long)]
     pub body: String,
     #[arg(long, default_value_t = NoteKind::Note)]
     pub kind: NoteKind,
