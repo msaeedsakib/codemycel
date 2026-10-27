@@ -155,6 +155,18 @@ fn file_segment_is_literal_and_quoted_names_are_opaque() {
     let lifetime =
         SemanticPath::symbol(&repo("src/a.rs"), &["<Foo<'a> as Trait>"], "m", None).unwrap();
     assert_eq!(lifetime.containers(), vec!["<Foo<'a> as Trait>"]);
+    for self_type in [
+        "W<'\"'>",
+        "W<b'('>",
+        "W<'<'>",
+        "W<')'>",
+        "W<'\\''>",
+        "W<'a, 'b>",
+    ] {
+        let path = SemanticPath::symbol(&repo("src/w.rs"), &[self_type], "f", None).unwrap();
+        assert_eq!(path.containers(), vec![self_type]);
+        assert_eq!(path.name(), "f");
+    }
 }
 
 #[test]
