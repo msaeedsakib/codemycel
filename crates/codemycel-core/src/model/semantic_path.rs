@@ -92,10 +92,22 @@ impl SemanticPath {
         Self::checked(path.as_str().to_owned(), Form::Path(path.as_str()))
     }
 
-    /// A package: its manifest's path for a workspace package, `<ecosystem>:<name>` (`cargo:uuid`,
-    /// `npm:uuid`) for an external one.
-    pub fn for_package(manifest_or_name: &str) -> Result<Self, ModelError> {
-        Self::checked(manifest_or_name.to_owned(), Form::Path(manifest_or_name))
+    /// A workspace package, identified by its manifest's path.
+    pub fn for_package(manifest: &RepoPath) -> Result<Self, ModelError> {
+        Self::checked(manifest.as_str().to_owned(), Form::Path(manifest.as_str()))
+    }
+
+    /// An external package: `<ecosystem>:<name>`, e.g. `cargo:uuid`, `npm:@scope/pkg`.
+    pub fn for_external_package(ecosystem: &str, name: &str) -> Result<Self, ModelError> {
+        let text = format!("{ecosystem}:{name}");
+        if ecosystem.is_empty() || ecosystem.contains(':') || name.is_empty() {
+            return Err(invalid(
+                &text,
+                "external package needs an ecosystem and a name",
+            ));
+        }
+        let expected = text.clone();
+        Self::checked(text, Form::Path(&expected))
     }
 
     pub fn community(id: &str) -> Result<Self, ModelError> {
@@ -195,6 +207,11 @@ fn invalid(text: &str, reason: &'static str) -> ModelError {
         text: text.to_owned(),
         reason,
     }
+}
+
+/// A non-empty path already in `RepoPath`'s normal form.
+fn is_repo_relative(path: &str) -> bool {
+    !path.is_empty() && RepoPath::new(path).is_ok_and(|normal| normal.as_str() == path)
 }
 
 fn is_doc(path: &str) -> bool {
@@ -326,12 +343,12 @@ impl FromStr for SemanticPath {
             Form::Community(tag) | Form::Note(tag) => {
                 !tag.is_empty() && !tag.contains("::") && !tag.contains('#')
             }
-            Form::Path(path) => !path.is_empty(),
-            Form::Heading { doc, slug, .. } => !doc.is_empty() && !slug.is_empty(),
+            Form::Path(path) => is_repo_relative(path),
+            Form::Heading { doc, slug, .. } => is_repo_relative(doc) && !slug.is_empty(),
             Form::Symbol { file, .. } => {
                 let rest = &text[file.len() + 2..];
                 let scan = scan(rest);
-                !file.is_empty()
+                is_repo_relative(file)
                     && scan.balanced
                     && scan.segments.iter().all(|segment| !segment.is_empty())
             }

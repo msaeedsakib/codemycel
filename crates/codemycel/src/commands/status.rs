@@ -1,7 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context as _;
-use codemycel_core::config::paths::REPO_DIR_NAME;
+use codemycel_core::config::paths::{CONFIG_FILE_NAME, REPO_DIR_NAME};
 use codemycel_core::store::{SCHEMA_VERSION, Store, StoreError, StoreRead};
 
 use super::{ExitCode, not_implemented};
@@ -44,8 +44,8 @@ pub fn run(_args: &StatusArgs, ctx: &Context) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::Ok)
 }
 
-/// The nearest ancestor below `$HOME` holding `.codemycel/` or `.git`, else the starting
-/// directory. The codemycel home never counts. Phase 4 replaces this with spec §8.6.
+/// Spec §8.6 below `$HOME`: the nearest ancestor whose `.codemycel/` holds `index.db` or
+/// `config.toml` (never the codemycel home), else the nearest holding `.git`, else the start.
 fn resolve_repo(start: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     let start = match start {
         Some(path) => path,
@@ -56,17 +56,17 @@ fn resolve_repo(start: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     let start = without_parent_segments(&absolute);
     let user_home = std::env::home_dir();
     let codemycel_home = codemycel_core::config::home_dir().ok();
-    for dir in start.ancestors() {
-        if Some(dir) == user_home.as_deref() {
-            break;
-        }
+    let ancestors: Vec<&Path> = start
+        .ancestors()
+        .take_while(|dir| Some(*dir) != user_home.as_deref())
+        .collect();
+    let indexed = ancestors.iter().find(|dir| {
         let marker = dir.join(REPO_DIR_NAME);
-        let indexed = marker.is_dir() && Some(marker.as_path()) != codemycel_home.as_deref();
-        if indexed || dir.join(".git").exists() {
-            return Ok(dir.to_path_buf());
-        }
-    }
-    Ok(start)
+        Some(marker.as_path()) != codemycel_home.as_deref()
+            && (marker.join(INDEX_FILE_NAME).is_file() || marker.join(CONFIG_FILE_NAME).is_file())
+    });
+    let found = indexed.or_else(|| ancestors.iter().find(|dir| dir.join(".git").exists()));
+    Ok(found.map_or_else(|| start.clone(), |dir| dir.to_path_buf()))
 }
 
 /// Resolves `.` and `..` lexically, so walking ancestors walks real parent directories.

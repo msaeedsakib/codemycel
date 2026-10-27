@@ -104,6 +104,24 @@ fn status_resolves_relative_repo_from_its_own_directory() {
 }
 
 #[test]
+fn status_prefers_an_indexed_ancestor_over_a_nearer_git() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join(".codemycel")).unwrap();
+    std::fs::write(root.path().join(".codemycel/config.toml"), "").unwrap();
+    let submodule = root.path().join("vendor/lib");
+    std::fs::create_dir_all(submodule.join(".git")).unwrap();
+    cargo_bin_cmd!("codemycel")
+        .args(["status", "--repo"])
+        .arg(&submodule)
+        .assert()
+        .code(2)
+        .stdout(format!(
+            "no index: run codemycel init in {}\n",
+            root.path().display()
+        ));
+}
+
+#[test]
 fn status_json_is_not_implemented_yet() {
     cargo_bin_cmd!("codemycel")
         .args(["status", "--json"])
