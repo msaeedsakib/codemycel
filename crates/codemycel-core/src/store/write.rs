@@ -33,6 +33,7 @@ impl Tx<'_> {
     }
 
     /// Inserts or updates the row for `file.path`, keeping its id and everything that hangs off it.
+    /// A changed root moves the file's nodes and their outgoing edges to the new root.
     pub fn upsert_file(&mut self, file: &FileRecord) -> Result<FileId> {
         let size = i64::try_from(file.size).map_err(|_| StoreError::OutOfRange("file size"))?;
         let id = self.tx.query_row(
@@ -56,6 +57,16 @@ impl Tx<'_> {
                 file.scip_covered,
             ],
             |row| row.get(0),
+        )?;
+        let root_id = file.root_id.map(|r| r.0);
+        self.tx.execute(
+            "UPDATE nodes SET root_id = ?2 WHERE file_id = ?1 AND root_id IS NOT ?2",
+            params![id, root_id],
+        )?;
+        self.tx.execute(
+            "UPDATE edges SET root_id = ?2
+             WHERE src IN (SELECT id FROM nodes WHERE file_id = ?1) AND root_id IS NOT ?2",
+            params![id, root_id],
         )?;
         Ok(FileId(id))
     }
