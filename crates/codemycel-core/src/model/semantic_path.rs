@@ -235,6 +235,10 @@ fn scan(text: &str) -> Scan<'_> {
             i += 1;
             continue;
         }
+        if let Some(len) = char_literal_len(&text[i..]) {
+            i += len;
+            continue;
+        }
         let angles_count = matches!(stack.last(), None | Some(b'<'));
         match bytes[i] {
             b'"' => in_string = true,
@@ -271,6 +275,19 @@ fn scan(text: &str) -> Scan<'_> {
         segments,
         balanced: balanced && stack.is_empty() && !in_string,
     }
+}
+
+/// Byte length of a Rust char literal (`'x'`, `'\n'`, `'\u{1F600}'`) at the start of `text`, so
+/// its contents are not read as brackets or quotes. A lifetime (`'a`) is not one.
+fn char_literal_len(text: &str) -> Option<usize> {
+    let rest = text.strip_prefix('\'')?;
+    let body = if let Some(escape) = rest.strip_prefix('\\') {
+        let escaped = escape.chars().next()?.len_utf8();
+        1 + escaped + escape[escaped..].find('\'')?
+    } else {
+        rest.chars().next()?.len_utf8()
+    };
+    rest[body..].starts_with('\'').then_some(body + 2)
 }
 
 fn split_suffix(segment: &str) -> (&str, Option<u32>) {
