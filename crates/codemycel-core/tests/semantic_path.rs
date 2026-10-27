@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use codemycel_core::{RepoPath, SemanticPath};
 
 fn repo(path: &str) -> RepoPath {
@@ -12,13 +14,8 @@ fn round_trip(text: &str) -> SemanticPath {
 
 #[test]
 fn simple_path_round_trips() {
-    let built = SemanticPath::symbol(
-        &repo("crates/core/src/store.rs"),
-        &["Store"],
-        "open",
-        None,
-    )
-    .unwrap();
+    let built =
+        SemanticPath::symbol(&repo("crates/core/src/store.rs"), &["Store"], "open", None).unwrap();
     assert_eq!(built.to_string(), "crates/core/src/store.rs::Store::open");
 
     let parsed = round_trip("crates/core/src/store.rs::Store::open");
@@ -47,7 +44,8 @@ fn trait_impl_paths_round_trip() {
     assert_eq!(closure.containers(), vec!["<F as Fn() -> io::Result<()>>"]);
     assert_eq!(closure.name(), "call");
 
-    let built = SemanticPath::symbol(&repo("src/fmt.rs"), &["<Vec<Foo> as Trait>"], "m", None).unwrap();
+    let built =
+        SemanticPath::symbol(&repo("src/fmt.rs"), &["<Vec<Foo> as Trait>"], "m", None).unwrap();
     assert_eq!(built, fmt);
 }
 

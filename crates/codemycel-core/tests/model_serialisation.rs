@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -19,7 +21,10 @@ where
             "{text} is not snake_case"
         );
         assert_eq!(text.parse::<T>().unwrap(), variant);
-        assert_eq!(serde_json::to_string(&variant).unwrap(), format!("\"{text}\""));
+        assert_eq!(
+            serde_json::to_string(&variant).unwrap(),
+            format!("\"{text}\"")
+        );
     }
     let distinct: BTreeSet<_> = all.iter().map(|&v| as_str(v)).collect();
     assert_eq!(distinct.len(), all.len());
@@ -57,9 +62,25 @@ fn node_kind_strings_match_spec() {
     assert_eq!(
         strings(NodeKind::ALL, NodeKind::as_str),
         [
-            "file", "module", "class", "struct", "enum", "enum_member", "trait", "interface",
-            "type_alias", "function", "method", "field", "constant", "variable", "package", "doc",
-            "heading", "community", "note",
+            "file",
+            "module",
+            "class",
+            "struct",
+            "enum",
+            "enum_member",
+            "trait",
+            "interface",
+            "type_alias",
+            "function",
+            "method",
+            "field",
+            "constant",
+            "variable",
+            "package",
+            "doc",
+            "heading",
+            "community",
+            "note",
         ]
     );
 }
@@ -69,8 +90,19 @@ fn edge_kind_strings_match_spec() {
     assert_eq!(
         strings(EdgeKind::ALL, EdgeKind::as_str),
         [
-            "contains", "defines", "imports", "exports", "calls", "references", "extends",
-            "implements", "overrides", "depends_on", "mentions", "member_of", "annotates",
+            "contains",
+            "defines",
+            "imports",
+            "exports",
+            "calls",
+            "references",
+            "extends",
+            "implements",
+            "overrides",
+            "depends_on",
+            "mentions",
+            "member_of",
+            "annotates",
         ]
     );
 }
@@ -83,7 +115,15 @@ fn verified_by_and_role_strings_match_spec() {
     );
     assert_eq!(
         strings(CandidateRole::ALL, CandidateRole::as_str),
-        ["call", "type", "import", "export", "extends", "implements", "value"]
+        [
+            "call",
+            "type",
+            "import",
+            "export",
+            "extends",
+            "implements",
+            "value"
+        ]
     );
 }
 
@@ -103,7 +143,10 @@ fn unresolved_reason_strings_match_spec() {
 
 #[test]
 fn occurrences_serialise_as_line_col_pairs() {
-    let occurrences = vec![Occurrence { line: 42, col: 10 }, Occurrence { line: 7, col: 0 }];
+    let occurrences = vec![
+        Occurrence { line: 42, col: 10 },
+        Occurrence { line: 7, col: 0 },
+    ];
     let json = serde_json::to_string(&occurrences).unwrap();
     assert_eq!(json, "[[42,10],[7,0]]");
     let back: Vec<Occurrence> = serde_json::from_str(&json).unwrap();
