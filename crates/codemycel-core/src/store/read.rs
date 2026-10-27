@@ -262,7 +262,8 @@ pub trait StoreRead {
         dump::nodes(self.conn())
     }
 
-    /// `<src path>\t<kind>\t<dst path>\t<occurrence count>` per edge, sorted.
+    /// `<src path> (<src kind>)\t<edge kind>\t<dst path> (<dst kind>)\t<occurrence count>` per
+    /// edge, sorted.
     fn dump_edges(&self) -> Result<String> {
         dump::edges(self.conn())
     }

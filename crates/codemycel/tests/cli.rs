@@ -85,6 +85,35 @@ fn status_reports_no_index_in_empty_repo() {
 }
 
 #[test]
+fn status_resolves_relative_repo_from_its_own_directory() {
+    let root = tempfile::tempdir().unwrap();
+    let here = root.path().join("here");
+    let there = root.path().join("there");
+    std::fs::create_dir_all(here.join(".git")).unwrap();
+    std::fs::create_dir_all(there.join(".git")).unwrap();
+    cargo_bin_cmd!("codemycel")
+        .current_dir(&here)
+        .args(["status", "--repo", "../there"])
+        .assert()
+        .code(2)
+        .stdout(
+            predicate::str::starts_with("no index: run codemycel init in ").and(
+                predicate::str::ends_with(format!("{}there\n", std::path::MAIN_SEPARATOR)),
+            ),
+        );
+}
+
+#[test]
+fn status_json_is_not_implemented_yet() {
+    cargo_bin_cmd!("codemycel")
+        .args(["status", "--json"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(not_implemented("status --json"));
+}
+
+#[test]
 fn status_reads_counts_from_created_store() {
     let repo = tempfile::tempdir().unwrap();
     let dir = repo.path().join(".codemycel");
