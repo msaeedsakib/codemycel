@@ -92,7 +92,8 @@ impl SemanticPath {
         Self::checked(path.as_str().to_owned(), Form::Path(path.as_str()))
     }
 
-    /// A package: its manifest's path for a workspace package, its name for an external one.
+    /// A package: its manifest's path for a workspace package, `<ecosystem>:<name>` (`cargo:uuid`,
+    /// `npm:uuid`) for an external one.
     pub fn for_package(manifest_or_name: &str) -> Result<Self, ModelError> {
         Self::checked(manifest_or_name.to_owned(), Form::Path(manifest_or_name))
     }
