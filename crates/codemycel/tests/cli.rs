@@ -34,7 +34,14 @@ fn every_subcommand_exists_and_reports_not_implemented() {
         &["trace", "main", "Store::open"],
         &["overview"],
         &["unresolved"],
-        &["note", "repo", "a durable finding"],
+        &[
+            "note",
+            "repo",
+            "--body",
+            "a durable finding",
+            "--kind",
+            "label",
+        ],
         &["notes"],
     ];
     for args in invocations {
@@ -45,6 +52,15 @@ fn every_subcommand_exists_and_reports_not_implemented() {
             .stdout("")
             .stderr(not_implemented(args[0]));
     }
+}
+
+#[test]
+fn note_body_is_a_flag_not_a_positional() {
+    cargo_bin_cmd!("codemycel")
+        .args(["note", "repo", "a durable finding"])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("--body"));
 }
 
 #[test]
