@@ -1,0 +1,15 @@
+[package]
+name = "codemycel-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+codemycel-core.workspace = true
+codemycel-index.workspace = true
+
+[lints]
+workspace = true
