@@ -13,5 +13,14 @@ codemycel-index.workspace = true
 codemycel-mcp.workspace = true
 codemycel-ui.workspace = true
 
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
+
 [lints]
 workspace = true
