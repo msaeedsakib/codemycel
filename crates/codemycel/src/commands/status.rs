@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context as _;
 use codemycel_core::config::paths::REPO_DIR_NAME;
@@ -41,20 +41,26 @@ pub fn run(_args: &StatusArgs, ctx: &Context) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::Ok)
 }
 
-/// The nearest ancestor holding `.codemycel/` or `.git`, else the starting directory. Phase 4
-/// replaces this with spec §8.6.
+/// The nearest ancestor below `$HOME` holding `.codemycel/` or `.git`, else the starting
+/// directory. The codemycel home never counts. Phase 4 replaces this with spec §8.6.
 fn resolve_repo(start: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     let start = match start {
         Some(path) => path,
         None => std::env::current_dir().context("reading the current directory")?,
     };
-    let found = start
-        .ancestors()
-        .find(|dir| is_repo(dir))
-        .map(Path::to_path_buf);
-    Ok(found.unwrap_or(start))
-}
-
-fn is_repo(dir: &Path) -> bool {
-    dir.join(REPO_DIR_NAME).is_dir() || dir.join(".git").exists()
+    let start =
+        std::path::absolute(&start).with_context(|| format!("resolving {}", start.display()))?;
+    let user_home = std::env::home_dir();
+    let codemycel_home = codemycel_core::config::home_dir().ok();
+    for dir in start.ancestors() {
+        if Some(dir) == user_home.as_deref() {
+            break;
+        }
+        let marker = dir.join(REPO_DIR_NAME);
+        let indexed = marker.is_dir() && Some(marker.as_path()) != codemycel_home.as_deref();
+        if indexed || dir.join(".git").exists() {
+            return Ok(dir.to_path_buf());
+        }
+    }
+    Ok(start)
 }

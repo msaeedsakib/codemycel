@@ -21,7 +21,8 @@ impl RepoPath {
         if slashed.starts_with('/') {
             return Err(reject("absolute path"));
         }
-        if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let drive = bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic();
+        if drive && matches!(bytes.get(2), None | Some(b'/')) {
             return Err(reject("absolute path"));
         }
         let mut segments = Vec::new();

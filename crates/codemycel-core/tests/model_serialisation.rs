@@ -17,7 +17,10 @@ where
     for &variant in all {
         let text = as_str(variant);
         assert!(
-            !text.is_empty() && text.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+            text.starts_with(|c: char| c.is_ascii_lowercase())
+                && text
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_'),
             "{text} is not snake_case"
         );
         assert_eq!(text.parse::<T>().unwrap(), variant);
