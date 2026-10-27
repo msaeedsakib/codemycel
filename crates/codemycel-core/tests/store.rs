@@ -189,6 +189,91 @@ fn seed(store: &mut Store) -> Seed {
 }
 
 #[test]
+fn nodes_named_matches_exact_name_across_kinds_and_files() {
+    let (_dir, _db, mut store) = fresh();
+    store
+        .transaction(|tx| {
+            tx.upsert_file(&file_record("src/a.rs", None))?;
+            tx.upsert_file(&file_record("src/b.ts", None))?;
+            tx.insert_nodes(&[
+                node("src/a.rs::Foo", NodeKind::Struct, "src/a.rs", (1, 3)),
+                node("src/b.ts::Foo", NodeKind::Constant, "src/b.ts", (1, 1)),
+                node("src/b.ts::Foo", NodeKind::TypeAlias, "src/b.ts", (2, 2)),
+                node("src/b.ts::foo", NodeKind::Function, "src/b.ts", (3, 5)),
+                node("src/b.ts::FooBar", NodeKind::Function, "src/b.ts", (6, 8)),
+            ])
+        })
+        .unwrap();
+
+    let named: Vec<(String, NodeKind)> = store
+        .nodes_named("Foo")
+        .unwrap()
+        .into_iter()
+        .map(|n| (n.node.path.to_string(), n.node.kind))
+        .collect();
+    assert_eq!(
+        named,
+        vec![
+            ("src/a.rs::Foo".to_owned(), NodeKind::Struct),
+            ("src/b.ts::Foo".to_owned(), NodeKind::Constant),
+            ("src/b.ts::Foo".to_owned(), NodeKind::TypeAlias),
+        ]
+    );
+    let lower = store.nodes_named("foo").unwrap();
+    assert_eq!(lower.len(), 1);
+    assert_eq!(lower[0].node.path, sem("src/b.ts::foo"));
+    assert!(store.nodes_named("FOO").unwrap().is_empty());
+}
+
+#[test]
+fn unresolved_for_node_returns_only_that_nodes_candidates() {
+    let (_dir, _db, mut store) = fresh();
+    seed(&mut store);
+    let main = node_ref("src/b.rs::main", NodeKind::Function);
+    store
+        .transaction(|tx| {
+            tx.insert_unresolved(&[Unresolved {
+                candidate: Candidate {
+                    file: repo("src/b.rs"),
+                    enclosing: main.clone(),
+                    text: "Config".to_owned(),
+                    role: CandidateRole::Type,
+                    at: Occurrence { line: 2, col: 10 },
+                },
+                reason: UnresolvedReason::NoDefinition,
+            }])
+        })
+        .unwrap();
+
+    let id_of = |path: &str| store.node_by_semantic_path(&sem(path), None).unwrap()[0].id;
+    let main_id = id_of("src/b.rs::main");
+    let rows = store.unresolved_for_node(main_id).unwrap();
+    let texts: Vec<&str> = rows
+        .iter()
+        .map(|r| r.unresolved.candidate.text.as_str())
+        .collect();
+    assert_eq!(texts, vec!["Config", "println"]);
+    assert!(rows.iter().all(|r| r.node_id == main_id));
+    assert!(
+        rows.iter()
+            .all(|r| r.unresolved.candidate.enclosing == main)
+    );
+
+    let new_rows = store
+        .unresolved_for_node(id_of("src/a.rs::Foo::new"))
+        .unwrap();
+    assert_eq!(new_rows.len(), 1);
+    assert_eq!(new_rows[0].unresolved.candidate.text, "Bar");
+
+    assert!(
+        store
+            .unresolved_for_node(id_of("src/a.rs::Foo"))
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn create_then_open_succeeds() {
     let (_dir, db, store) = fresh();
     drop(store);
