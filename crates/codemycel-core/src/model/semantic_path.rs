@@ -13,6 +13,7 @@ pub struct SemanticPath(String);
 
 const COMMUNITY: &str = "community:";
 const NOTE: &str = "note:";
+const EXTERNAL_PACKAGE: &str = "package:";
 const DOC_EXTENSIONS: [&str; 2] = [".md", ".mdx"];
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,6 +30,10 @@ enum Form<'a> {
         disambiguator: Option<u32>,
     },
     Path(&'a str),
+    ExternalPackage {
+        ecosystem: &'a str,
+        name: &'a str,
+    },
     Community(&'a str),
     Note(&'a str),
 }
@@ -99,17 +104,13 @@ impl SemanticPath {
         Self::checked(manifest.as_str().to_owned(), Form::Path(manifest.as_str()))
     }
 
-    /// An external package: `<ecosystem>:<name>`, e.g. `cargo:uuid`, `npm:@scope/pkg`.
+    /// An external package: `package:<ecosystem>:<name>`, e.g. `package:cargo:uuid`,
+    /// `package:npm:@scope/pkg`. It has no file.
     pub fn for_external_package(ecosystem: &str, name: &str) -> Result<Self, ModelError> {
-        let text = format!("{ecosystem}:{name}");
-        if ecosystem.is_empty() || ecosystem.contains(':') || name.is_empty() {
-            return Err(invalid(
-                &text,
-                "external package needs an ecosystem and a name",
-            ));
-        }
-        let expected = text.clone();
-        Self::checked(text, Form::Path(&expected))
+        Self::checked(
+            format!("{EXTERNAL_PACKAGE}{ecosystem}:{name}"),
+            Form::ExternalPackage { ecosystem, name },
+        )
     }
 
     pub fn community(id: &str) -> Result<Self, ModelError> {
@@ -134,13 +135,14 @@ impl SemanticPath {
         &self.0
     }
 
-    /// The file the node lives in (for headings, the document); `None` for communities and notes.
+    /// The file the node lives in (for headings, the document); `None` for external packages,
+    /// communities, and notes.
     pub fn file(&self) -> Option<&str> {
         match self.form() {
             Form::Symbol { file, .. } => Some(file),
             Form::Heading { doc, .. } => Some(doc),
             Form::Path(path) => Some(path),
-            Form::Community(_) | Form::Note(_) => None,
+            Form::ExternalPackage { .. } | Form::Community(_) | Form::Note(_) => None,
         }
     }
 
@@ -151,13 +153,14 @@ impl SemanticPath {
         }
     }
 
-    /// The last segment without its `[n]` suffix: the symbol name, heading slug, file or package
-    /// path, community id, or note uuid.
+    /// The last segment without its `[n]` suffix: the symbol name, heading slug, file or manifest
+    /// path, external package name, community id, or note uuid.
     pub fn name(&self) -> &str {
         match self.form() {
             Form::Symbol { name, .. } => name,
             Form::Heading { slug, .. } => slug,
             Form::Path(path) => path,
+            Form::ExternalPackage { name, .. } => name,
             Form::Community(id) | Form::Note(id) => id,
         }
     }
@@ -178,6 +181,10 @@ impl SemanticPath {
         }
         if let Some(uuid) = text.strip_prefix(NOTE) {
             return Form::Note(uuid);
+        }
+        if let Some(rest) = text.strip_prefix(EXTERNAL_PACKAGE) {
+            let (ecosystem, name) = rest.split_once(':').unwrap_or((rest, ""));
+            return Form::ExternalPackage { ecosystem, name };
         }
         let Some((file, rest)) = text.split_once("::") else {
             return match text.rsplit_once('#') {
@@ -346,6 +353,9 @@ impl FromStr for SemanticPath {
                 !tag.is_empty() && !tag.contains("::") && !tag.contains('#')
             }
             Form::Path(path) => is_repo_relative(path),
+            Form::ExternalPackage { ecosystem, name } => {
+                !ecosystem.is_empty() && !name.is_empty() && !name.contains("::")
+            }
             Form::Heading { doc, slug, .. } => is_repo_relative(doc) && !slug.is_empty(),
             Form::Symbol { file, .. } => {
                 let rest = &text[file.len() + 2..];

@@ -123,7 +123,12 @@ fn file_and_package_paths() {
     assert!(SemanticPath::for_file(&repo("")).is_err());
 
     let external = SemanticPath::for_external_package("npm", "@scope/pkg").unwrap();
-    assert_eq!(external.to_string(), "npm:@scope/pkg");
+    assert_eq!(external.to_string(), "package:npm:@scope/pkg");
+    assert_eq!(external.file(), None);
+    assert_eq!(external.name(), "@scope/pkg");
+    assert_eq!(round_trip("package:cargo:uuid").file(), None);
+    assert!(SemanticPath::for_external_package("np:m", "uuid").is_err());
+    assert!(SemanticPath::for_file(&repo("package:cargo:uuid")).is_err());
     assert_ne!(
         SemanticPath::for_external_package("cargo", "uuid").unwrap(),
         SemanticPath::for_external_package("npm", "uuid").unwrap()
