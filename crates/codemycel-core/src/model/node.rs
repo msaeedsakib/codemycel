@@ -30,7 +30,8 @@ pub struct Node {
     pub path: SemanticPath,
     pub kind: NodeKind,
     pub name: String,
-    /// The file holding the node; `None` for packages, communities, and notes.
+    /// The file holding the node; a workspace package's manifest, so deleting the manifest
+    /// deletes the package. `None` for external packages, communities, and notes.
     pub file: Option<RepoPath>,
     pub span: Option<Span>,
     pub selection: Option<ByteRange>,
