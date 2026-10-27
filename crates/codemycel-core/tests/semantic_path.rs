@@ -111,11 +111,38 @@ fn file_and_package_paths() {
     assert_eq!(file.name(), "src/main.rs");
     assert_eq!(round_trip("src/main.rs"), file);
 
-    let root_package = SemanticPath::for_package("Cargo.toml").unwrap();
+    let root_package = SemanticPath::for_package(&repo("Cargo.toml")).unwrap();
     assert_eq!(root_package.to_string(), "Cargo.toml");
-    assert_eq!(SemanticPath::for_package("serde").unwrap().name(), "serde");
-    assert!(SemanticPath::for_package("").is_err());
+    assert_eq!(
+        SemanticPath::for_package(&repo(r"packages\web\package.json"))
+            .unwrap()
+            .to_string(),
+        "packages/web/package.json"
+    );
+    assert!(SemanticPath::for_package(&repo("")).is_err());
     assert!(SemanticPath::for_file(&repo("")).is_err());
+
+    let external = SemanticPath::for_external_package("npm", "@scope/pkg").unwrap();
+    assert_eq!(external.to_string(), "npm:@scope/pkg");
+    assert_ne!(
+        SemanticPath::for_external_package("cargo", "uuid").unwrap(),
+        SemanticPath::for_external_package("npm", "uuid").unwrap()
+    );
+    assert!(SemanticPath::for_external_package("", "uuid").is_err());
+    assert!(SemanticPath::for_external_package("npm", "").is_err());
+}
+
+#[test]
+fn parsed_paths_must_be_normalised_and_relative() {
+    for text in [
+        r"src\db\store.rs::Store::open",
+        "/etc/passwd::x",
+        "../outside.rs::f",
+        "./src/a.rs",
+        r"docs\a.md#install",
+    ] {
+        assert!(text.parse::<SemanticPath>().is_err(), "{text} parsed");
+    }
 }
 
 #[test]
