@@ -1,15 +1,18 @@
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context as _;
 use codemycel_core::config::paths::REPO_DIR_NAME;
 use codemycel_core::store::{SCHEMA_VERSION, Store, StoreError, StoreRead};
 
-use super::ExitCode;
+use super::{ExitCode, not_implemented};
 use crate::cli::{Context, StatusArgs};
 
 const INDEX_FILE_NAME: &str = "index.db";
 
 pub fn run(_args: &StatusArgs, ctx: &Context) -> anyhow::Result<ExitCode> {
+    if ctx.json {
+        return not_implemented("status --json");
+    }
     let repo = resolve_repo(ctx.repo.clone())?;
     let db = repo.join(REPO_DIR_NAME).join(INDEX_FILE_NAME);
     if !db.exists() {
@@ -48,8 +51,9 @@ fn resolve_repo(start: Option<PathBuf>) -> anyhow::Result<PathBuf> {
         Some(path) => path,
         None => std::env::current_dir().context("reading the current directory")?,
     };
-    let start =
+    let absolute =
         std::path::absolute(&start).with_context(|| format!("resolving {}", start.display()))?;
+    let start = without_parent_segments(&absolute);
     let user_home = std::env::home_dir();
     let codemycel_home = codemycel_core::config::home_dir().ok();
     for dir in start.ancestors() {
@@ -63,4 +67,19 @@ fn resolve_repo(start: Option<PathBuf>) -> anyhow::Result<PathBuf> {
         }
     }
     Ok(start)
+}
+
+/// Resolves `.` and `..` lexically, so walking ancestors walks real parent directories.
+fn without_parent_segments(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }

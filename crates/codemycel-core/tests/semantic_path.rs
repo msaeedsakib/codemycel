@@ -137,6 +137,16 @@ fn const_generic_containers_keep_their_brackets() {
 }
 
 #[test]
+fn qualified_inherent_self_types_use_angle_brackets() {
+    for self_type in ["<super::Foo>", "<crate::outer::Foo>", "<dyn crate::Tr>"] {
+        let path = SemanticPath::symbol(&repo("src/x.rs"), &[self_type], "new", None).unwrap();
+        assert_eq!(path.containers(), vec![self_type]);
+        assert_eq!(path.name(), "new");
+    }
+    assert!(SemanticPath::symbol(&repo("src/x.rs"), &["super::Foo"], "new", None).is_err());
+}
+
+#[test]
 fn display_is_stable_across_platforms() {
     let built = SemanticPath::symbol(&repo(r"src\db\store.rs"), &["Store"], "open", None).unwrap();
     assert_eq!(built.to_string(), "src/db/store.rs::Store::open");

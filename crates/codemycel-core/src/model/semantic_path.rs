@@ -35,13 +35,23 @@ enum Form<'a> {
 
 impl SemanticPath {
     /// A code symbol. `containers` are the enclosing named nodes outermost first, with Rust impl
-    /// containers given as their literal text (`Foo`, `<Foo as Display>`).
+    /// containers given as their literal text (`Foo`, `<Foo as Display>`). A self type that is
+    /// itself a path is written in Rust's qualified form, `<super::Foo>`, because a bare
+    /// `super::Foo` would read as two containers.
     pub fn symbol<S: AsRef<str>>(
         file: &RepoPath,
         containers: &[S],
         name: &str,
         disambiguator: Option<u32>,
     ) -> Result<Self, ModelError> {
+        for segment in containers.iter().map(AsRef::as_ref).chain([name]) {
+            if scan(segment).segments.len() > 1 {
+                return Err(invalid(
+                    segment,
+                    "contains a top-level `::`; write a qualified self type as `<path>`",
+                ));
+            }
+        }
         let mut text = file.as_str().to_owned();
         for container in containers {
             text.push_str("::");
