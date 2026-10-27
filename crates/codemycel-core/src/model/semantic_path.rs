@@ -57,7 +57,11 @@ impl SemanticPath {
         Ok(Self(text))
     }
 
-    pub fn heading(doc: &RepoPath, slug: &str, disambiguator: Option<u32>) -> Result<Self, ModelError> {
+    pub fn heading(
+        doc: &RepoPath,
+        slug: &str,
+        disambiguator: Option<u32>,
+    ) -> Result<Self, ModelError> {
         if slug.is_empty() || slug.contains('#') || slug.contains("::") {
             return Err(invalid(slug, "invalid heading slug"));
         }
@@ -118,7 +122,9 @@ impl SemanticPath {
 
     pub fn disambiguator(&self) -> Option<u32> {
         match self.form() {
-            Form::Symbol { disambiguator, .. } | Form::Heading { disambiguator, .. } => disambiguator,
+            Form::Symbol { disambiguator, .. } | Form::Heading { disambiguator, .. } => {
+                disambiguator
+            }
             _ => None,
         }
     }
