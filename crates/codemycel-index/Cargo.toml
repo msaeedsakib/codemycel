@@ -13,5 +13,15 @@ codemycel-parse.workspace = true
 codemycel-lsp.workspace = true
 codemycel-scip.workspace = true
 
+blake3.workspace = true
+ignore.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+similar.workspace = true
+tempfile.workspace = true
+
 [lints]
 workspace = true
