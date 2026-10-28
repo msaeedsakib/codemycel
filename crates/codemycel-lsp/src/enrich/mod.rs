@@ -140,9 +140,25 @@ struct FileOutcome {
     partial: bool,
 }
 
+enum Held<'a> {
+    Owned(Session<'a>),
+    Borrowed(&'a Session<'a>),
+}
+
+impl<'a> std::ops::Deref for Held<'a> {
+    type Target = Session<'a>;
+
+    fn deref(&self) -> &Session<'a> {
+        match self {
+            Held::Owned(session) => session,
+            Held::Borrowed(session) => session,
+        }
+    }
+}
+
 /// Runs the enrichment algorithm for one root over a started, ready server.
 pub struct Enricher<'a> {
-    session: Session<'a>,
+    session: Held<'a>,
     mapper: Mapper<'a>,
     view: &'a IndexView,
     repo_root: PathBuf,
@@ -165,8 +181,48 @@ impl<'a> Enricher<'a> {
         files: &[RepoPath],
         options: EnrichOptions,
     ) -> Result<Self, DegradeReason> {
-        let adapter = launch.adapter;
         let session = Session::start(launch, &absolute(repo_root, root)).await?;
+        Self::ready(
+            Held::Owned(session),
+            language,
+            view,
+            repo_root,
+            files,
+            options,
+        )
+        .await
+    }
+
+    /// Like `start`, over a server the caller keeps running between views. A restart replaces
+    /// the borrowed session's process; `shutdown` leaves the session running.
+    pub async fn attach(
+        session: &'a Session<'a>,
+        language: &'a dyn LanguageAdapter,
+        view: &'a IndexView,
+        repo_root: &Path,
+        files: &[RepoPath],
+        options: EnrichOptions,
+    ) -> Result<Self, DegradeReason> {
+        Self::ready(
+            Held::Borrowed(session),
+            language,
+            view,
+            repo_root,
+            files,
+            options,
+        )
+        .await
+    }
+
+    async fn ready(
+        session: Held<'a>,
+        language: &'a dyn LanguageAdapter,
+        view: &'a IndexView,
+        repo_root: &Path,
+        files: &[RepoPath],
+        options: EnrichOptions,
+    ) -> Result<Self, DegradeReason> {
+        let adapter = session.adapter();
         let mut sorted = files.to_vec();
         sorted.sort();
         let probe = sorted.iter().find_map(|file| {
@@ -174,7 +230,9 @@ impl<'a> Enricher<'a> {
         });
         let readiness = session.wait_ready(probe.as_ref()).await;
         if readiness == Readiness::NotReady {
-            session.shutdown().await;
+            if let Held::Owned(session) = session {
+                session.shutdown().await;
+            }
             return Err(DegradeReason::NotReady);
         }
         Ok(Self {
@@ -789,8 +847,11 @@ impl<'a> Enricher<'a> {
         Some((client, uri, view))
     }
 
+    /// `shutdown` and `exit` for a server this enricher started; nothing for an attached one.
     pub async fn shutdown(self) {
-        self.session.shutdown().await;
+        if let Held::Owned(session) = self.session {
+            session.shutdown().await;
+        }
     }
 }
 
