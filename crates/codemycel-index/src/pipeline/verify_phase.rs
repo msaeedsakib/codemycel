@@ -39,8 +39,9 @@ pub struct Scope {
     pub files: BTreeSet<RepoPath>,
     /// Files whose traits and interfaces are asked for implementers; a superset of `files`.
     pub implementer_sources: BTreeSet<RepoPath>,
-    /// Each root's stored status. A root stored degraded, or one whose server, coverage, or
-    /// degradation comes out different from its stored status, has every file rebuilt.
+    /// Each root's stored status. A root with a file in scope that is stored degraded, or whose
+    /// server, coverage, or degradation comes out different from its stored status, has every
+    /// file rebuilt; a root with none keeps its status and rows, degraded or not.
     pub statuses: BTreeMap<Root, RootStatus>,
 }
 
@@ -217,18 +218,19 @@ pub fn run(
             continue;
         }
         let stored = scope.statuses.get(root);
-        let lsp_files: Vec<RepoPath> = if stored.is_some_and(|s| s.degraded.is_some()) {
-            lsp_all.clone()
-        } else {
-            lsp_all
-                .iter()
-                .filter(|file| scope.files.contains(*file))
-                .cloned()
-                .collect()
-        };
-        if lsp_files.is_empty() {
+        let affected: Vec<RepoPath> = lsp_all
+            .iter()
+            .filter(|file| scope.files.contains(*file))
+            .cloned()
+            .collect();
+        if affected.is_empty() {
             continue;
         }
+        let lsp_files = if stored.is_some_and(|s| s.degraded.is_some()) {
+            lsp_all.clone()
+        } else {
+            affected
+        };
         let started = Instant::now();
         let same_server: Vec<&RepoPath> = per_root
             .iter()
