@@ -130,3 +130,8 @@ fn join(lines: &[&String]) -> String {
 fn rust_scip_and_lsp_edge_sets_differ_only_by_allowlist() {
     assert_parity("rust/workspace-basic", Language::Rust);
 }
+
+#[test]
+fn typescript_scip_and_lsp_edge_sets_differ_only_by_allowlist() {
+    assert_parity("typescript/monorepo-basic", Language::TypeScript);
+}

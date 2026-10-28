@@ -3,12 +3,12 @@
 
 # rust-analyzer's SCIP output carries no symbol relationships, so SCIP has no implementers;
 # the language server finds them with textDocument/implementation.
-lsp-only	edge	crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	overrides	crates/core/src/store.rs::Store::load (method)	1
-lsp-only	edge	crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	1
-lsp-only	edge	crates/core/src/geometry.rs::<Circle as Area>::area (method)	overrides	crates/core/src/geometry.rs::Area::area (method)	1
-lsp-only	edge	crates/core/src/geometry.rs::<Circle as Area>::name (method)	overrides	crates/core/src/geometry.rs::Area::name (method)	1
-lsp-only	edge	crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	1
-lsp-only	edge	crates/core/src/render.rs::<T as Render>::render (method)	overrides	crates/core/src/render.rs::Render::render (method)	1
+lsp-only	edge	crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	overrides	crates/core/src/store.rs::Store::load (method)	0
+lsp-only	edge	crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	0
+lsp-only	edge	crates/core/src/geometry.rs::<Circle as Area>::area (method)	overrides	crates/core/src/geometry.rs::Area::area (method)	0
+lsp-only	edge	crates/core/src/geometry.rs::<Circle as Area>::name (method)	overrides	crates/core/src/geometry.rs::Area::name (method)	0
+lsp-only	edge	crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	0
+lsp-only	edge	crates/core/src/render.rs::<T as Render>::render (method)	overrides	crates/core/src/render.rs::Render::render (method)	0
 
 # `Self` in an impl: the language server resolves it through the impl header to the self type,
 # a second occurrence of the edge; SCIP gives it a symbol the index never defines.

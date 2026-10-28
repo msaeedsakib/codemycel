@@ -1,0 +1,19 @@
+# Differences between indexing this fixture through its SCIP index (scip-typescript) and through
+# TypeScript 7. Each line is a diff line as the parity test prints it; the comment above says why
+# it differs.
+
+# `new Circle(...)`: scip-typescript resolves the class name to the constructor, a call;
+# TypeScript 7's definition is the class itself, a reference.
+lsp-only	edge	packages/app/src/main.ts::build (function)	references	packages/core/src/shapes.ts::Circle (class)	1
+lsp-only	edge	packages/app/src/main.ts::build (function)	references	packages/core/src/shapes.ts::Square (class)	1
+lsp-only	edge	packages/app/src/view.tsx::CircleBadge (function)	references	packages/core/src/shapes.ts::Circle (class)	1
+scip-only	edge	packages/app/src/main.ts::build (function)	calls	packages/core/src/shapes.ts::Circle::constructor (method)	1
+scip-only	edge	packages/app/src/main.ts::build (function)	calls	packages/core/src/shapes.ts::Square::constructor (method)	1
+scip-only	edge	packages/app/src/view.tsx::CircleBadge (function)	calls	packages/core/src/shapes.ts::Circle::constructor (method)	1
+
+# `gallery.add(...)` on a class property holding an arrow function: TypeScript 7's definition
+# range is the arrow function, not the property name, so no node's selection holds it;
+# scip-typescript defines the symbol at the name.
+lsp-only	unresolved	packages/app/src/main.ts:20:10	call	add	unmapped
+lsp-only	unresolved	packages/app/src/main.ts:20:29	call	add	unmapped
+scip-only	edge	packages/app/src/main.ts::build (function)	calls	packages/app/src/main.ts::Gallery::add (method)	2
