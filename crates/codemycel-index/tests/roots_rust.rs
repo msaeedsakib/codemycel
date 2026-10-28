@@ -39,17 +39,8 @@ fn workspace_and_standalone_roots_detected() {
         write(repo.path(), "broken/Cargo.toml", "[package\nname = "),
         write(repo.path(), "plain/Cargo.toml", "[dependencies]\n"),
     ];
-    let registry = Registry::with_adapters(vec![Box::new(RustAdapter::new())]);
-    let detector =
-        RootDetector::detect(repo.path(), &files, &Config::default(), &registry).unwrap();
-    let roots: Vec<&str> = detector
-        .roots()
-        .iter()
-        .inspect(|root| assert_eq!(root.language, Language::Rust))
-        .map(|root| root.path.as_str())
-        .collect();
     assert_eq!(
-        roots,
+        roots(repo.path(), &files),
         [
             "",
             "apps/desktop",
@@ -60,4 +51,59 @@ fn workspace_and_standalone_roots_detected() {
             "tools/other",
         ]
     );
+}
+
+#[test]
+fn path_dependencies_inside_a_workspace_are_members() {
+    let repo = tempfile::tempdir().unwrap();
+    let package = |deps: &str| format!("{PACKAGE}{deps}");
+    let files = [
+        write(
+            repo.path(),
+            "Cargo.toml",
+            "[workspace]\nmembers = [\"app\"]\nexclude = [\"libs/vendored\"]\n",
+        ),
+        write(
+            repo.path(),
+            "app/Cargo.toml",
+            &package(
+                "[dependencies]\nshared = { path = \"../shared\" }\nvendored = { path = \"../libs/vendored\" }\nserde = \"1\"\n[dev-dependencies]\ntestkit = { path = \"../libs/testkit\" }\n",
+            ),
+        ),
+        write(
+            repo.path(),
+            "shared/Cargo.toml",
+            &package("[build-dependencies]\ngen = { path = \"../tools/gen\" }\n"),
+        ),
+        write(repo.path(), "libs/testkit/Cargo.toml", PACKAGE),
+        write(repo.path(), "tools/gen/Cargo.toml", PACKAGE),
+        write(repo.path(), "libs/vendored/Cargo.toml", PACKAGE),
+        write(repo.path(), "lonely/Cargo.toml", PACKAGE),
+        write(
+            repo.path(),
+            "apps/w/Cargo.toml",
+            "[workspace]\nmembers = [\"a\"]\n",
+        ),
+        write(
+            repo.path(),
+            "apps/w/a/Cargo.toml",
+            &package("[dependencies]\next = { path = \"../../../ext\" }\n"),
+        ),
+        write(repo.path(), "ext/Cargo.toml", PACKAGE),
+    ];
+    assert_eq!(
+        roots(repo.path(), &files),
+        ["", "apps/w", "ext", "libs/vendored", "lonely"]
+    );
+}
+
+fn roots(repo: &Path, files: &[RepoPath]) -> Vec<String> {
+    let registry = Registry::with_adapters(vec![Box::new(RustAdapter::new())]);
+    RootDetector::detect(repo, files, &Config::default(), &registry)
+        .unwrap()
+        .roots()
+        .iter()
+        .inspect(|root| assert_eq!(root.language, Language::Rust))
+        .map(|root| root.path.as_str().to_owned())
+        .collect()
 }
