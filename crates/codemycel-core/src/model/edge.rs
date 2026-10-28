@@ -18,7 +18,9 @@ pub struct Edge {
 impl Edge {
     /// The edge a confirmed candidate stands for. Imports run file to file and exports from the
     /// file; a call is `calls` only between functions and methods, `references` otherwise. `None`
-    /// for an import of the candidate's own file or of a node that lives in no file.
+    /// for an import of the candidate's own file or of a node that lives in no file, and for an
+    /// `implements` clause outside a type (a Rust impl header), whose type-sourced edge comes from
+    /// the parent's implementers.
     pub fn for_candidate(
         candidate: &Candidate,
         target: &NodeRef,
@@ -30,6 +32,12 @@ impl Edge {
                 .map(|path| NodeRef::new(path, NodeKind::File))
         };
         let callable = |kind| matches!(kind, NodeKind::Function | NodeKind::Method);
+        let implementer = |kind| {
+            matches!(
+                kind,
+                NodeKind::Struct | NodeKind::Enum | NodeKind::Class | NodeKind::TypeAlias
+            )
+        };
         let (src, dst, kind) = match candidate.role {
             CandidateRole::Import => {
                 let target_file = RepoPath::new(target.path.file()?).ok()?;
@@ -60,11 +68,12 @@ impl Edge {
                 target.clone(),
                 EdgeKind::Extends,
             ),
-            CandidateRole::Implements => (
+            CandidateRole::Implements if implementer(candidate.enclosing.kind) => (
                 candidate.enclosing.clone(),
                 target.clone(),
                 EdgeKind::Implements,
             ),
+            CandidateRole::Implements => return None,
         };
         Some(Edge {
             src,
