@@ -7,4 +7,7 @@ docs/setup.md	doc	1-4
 docs/setup.md#setup	heading	1-4
 package:cargo:serde	package	-
 package:npm:left-pad	package	-
+pkg/index.js	file	1-7
+pkg/index.js::render	function	1-3
+pkg/index.js::shared	function	5-5
 pkg/package.json	package	-
