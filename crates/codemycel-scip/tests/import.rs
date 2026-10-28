@@ -398,7 +398,24 @@ fn commit_is_recorded_once_and_refreshed_only_when_index_hash_changes() {
         Some(second_head.as_str())
     );
 
-    let overridden = second
+    let ignored = second
+        .commit_handling(
+            dir.path(),
+            &load_config(),
+            Some(second.hash()),
+            Some("feedface"),
+        )
+        .unwrap();
+    assert_eq!(
+        ignored, second_head,
+        "same index file, so the override is not recorded"
+    );
+    assert_eq!(
+        load_config().scip_commit.as_deref(),
+        Some(second_head.as_str())
+    );
+
+    let overridden = first
         .commit_handling(
             dir.path(),
             &load_config(),

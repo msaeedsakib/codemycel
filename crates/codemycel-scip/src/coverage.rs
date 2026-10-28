@@ -8,10 +8,11 @@ use codemycel_core::config::{Config, ConfigWriter};
 use crate::{ScipError, ScipIndex};
 
 impl ScipIndex {
-    /// The commit the index describes, recorded in `.codemycel/config.toml` once. `override_sha`
-    /// (the `--scip-commit` flag) always wins and is recorded. Otherwise a configured commit is
-    /// kept while the index file is the one imported last (`previous_hash`), or when nothing was
-    /// imported before; a new index, or no configured commit, records git HEAD.
+    /// The commit the index describes, recorded in `.codemycel/config.toml` once. A configured
+    /// commit is kept while the index file is the one imported last (`previous_hash`), and on a
+    /// first import without `override_sha`. Otherwise the commit is recorded: `override_sha`
+    /// (the `--scip-commit` flag) when given, else git HEAD. The override is ignored while a
+    /// configured commit is kept.
     pub fn commit_handling(
         &self,
         repo_root: &Path,
@@ -19,23 +20,23 @@ impl ScipIndex {
         previous_hash: Option<&str>,
         override_sha: Option<&str>,
     ) -> Result<String, ScipError> {
-        if let Some(sha) = override_sha {
-            ConfigWriter::set_scip_commit(repo_root, sha)?;
-            return Ok(sha.to_owned());
-        }
-        let same_index = previous_hash.is_none_or(|previous| previous == self.hash());
+        let unchanged = previous_hash == Some(self.hash());
+        let first_import = previous_hash.is_none();
         if let Some(commit) = &config.scip_commit
-            && same_index
+            && (unchanged || (first_import && override_sha.is_none()))
         {
             return Ok(commit.clone());
         }
-        let head = git(repo_root, &["rev-parse", "HEAD"])
-            .and_then(|out| String::from_utf8(out).ok())
-            .map(|out| out.trim().to_owned())
-            .filter(|head| !head.is_empty())
-            .ok_or(ScipError::NoHead)?;
-        ConfigWriter::set_scip_commit(repo_root, &head)?;
-        Ok(head)
+        let commit = match override_sha {
+            Some(sha) => sha.to_owned(),
+            None => git(repo_root, &["rev-parse", "HEAD"])
+                .and_then(|out| String::from_utf8(out).ok())
+                .map(|out| out.trim().to_owned())
+                .filter(|head| !head.is_empty())
+                .ok_or(ScipError::NoHead)?,
+        };
+        ConfigWriter::set_scip_commit(repo_root, &commit)?;
+        Ok(commit)
     }
 
     /// Marks the documents SCIP may answer for: the file is unchanged between `commit` and the
