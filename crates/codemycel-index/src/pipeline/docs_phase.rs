@@ -244,7 +244,7 @@ impl<'a> Packages<'a> {
             });
         }
         for file in code_files {
-            if let Some(owner) = self.owner(file) {
+            for owner in self.owners(file) {
                 edges.push(Edge {
                     src: owner.clone(),
                     dst: NodeRef::new(SemanticPath::for_file(file)?, NodeKind::File),
@@ -290,9 +290,10 @@ impl<'a> Packages<'a> {
         linked.then_some(node)
     }
 
-    /// The deepest package whose directory holds `file`, of any ecosystem.
-    fn owner(&self, file: &RepoPath) -> Option<&NodeRef> {
-        self.workspace
+    /// Every package, of any ecosystem, in the deepest directory that holds `file`.
+    fn owners(&self, file: &RepoPath) -> Vec<&NodeRef> {
+        let holding: Vec<_> = self
+            .workspace
             .iter()
             .filter(|(m, _)| {
                 m.directory.is_root()
@@ -301,8 +302,16 @@ impl<'a> Packages<'a> {
                         .strip_prefix(m.directory.as_str())
                         .is_some_and(|rest| rest.starts_with('/'))
             })
-            .max_by_key(|(m, _)| m.directory.as_str().len())
+            .collect();
+        let deepest = holding
+            .iter()
+            .map(|(m, _)| m.directory.as_str().len())
+            .max();
+        holding
+            .into_iter()
+            .filter(|(m, _)| Some(m.directory.as_str().len()) == deepest)
             .map(|(_, node)| node)
+            .collect()
     }
 }
 
