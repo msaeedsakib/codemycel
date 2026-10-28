@@ -424,7 +424,47 @@ impl<'a> Enricher<'a> {
         };
         let timeout = self.options.request_timeout;
         let locations = twice(|| client.definition(uri, position, timeout)).await?;
-        Ok(self.verdict(&locations))
+        let verdict = self.verdict(&locations);
+        if matches!(verdict, Verdict::Confirmed { .. }) {
+            return Ok(verdict);
+        }
+        for location in &locations {
+            if let Target::ImplHeader { file, index } =
+                self.mapper.locate(&location.uri, location.range)
+                && let Some(target) = self.self_type(client, &file, index).await?
+            {
+                return Ok(Verdict::Confirmed { target });
+            }
+        }
+        Ok(verdict)
+    }
+
+    /// The node an impl record's self type is defined as, through `definition` on the type's
+    /// identifier in the header.
+    async fn self_type(
+        &self,
+        client: &LspClient,
+        file: &RepoPath,
+        index: usize,
+    ) -> Result<Option<NodeRef>, Failure> {
+        let Some(view) = self.view.file(file) else {
+            return Ok(None);
+        };
+        let Some(record) = view.impl_records.get(index) else {
+            return Ok(None);
+        };
+        let Some(position) = view.index.position(record.self_type_selection.start) else {
+            return Ok(None);
+        };
+        let uri = self.uri(file).map_err(|_| Failure::Failed)?;
+        let timeout = self.options.request_timeout;
+        let definitions = twice(|| client.definition(&uri, position, timeout)).await?;
+        Ok(definitions
+            .iter()
+            .find_map(|l| match self.mapper.locate(&l.uri, l.range) {
+                Target::Node(node) => Some(node),
+                _ => None,
+            }))
     }
 
     /// The first location that maps to a node confirms; otherwise the first location's reason.
@@ -505,20 +545,8 @@ impl<'a> Enricher<'a> {
         let Some(record) = block_view.impl_records.get(index) else {
             return Ok(Vec::new());
         };
-        let Some(position) = block_view.index.position(record.self_type_selection.start) else {
-            return Ok(Vec::new());
-        };
-        let uri = self.uri(file).map_err(|_| Failure::Failed)?;
-        let timeout = self.options.request_timeout;
-        let definitions = twice(|| client.definition(&uri, position, timeout)).await?;
-        let implementer =
-            definitions
-                .iter()
-                .find_map(|l| match self.mapper.locate(&l.uri, l.range) {
-                    Target::Node(node) if is_implementer(node.kind) => Some(node),
-                    _ => None,
-                });
-        let Some(implementer) = implementer else {
+        let implementer = self.self_type(client, file, index).await?;
+        let Some(implementer) = implementer.filter(|node| is_implementer(node.kind)) else {
             return Ok(Vec::new());
         };
         let block_methods: Vec<&Node> = block_view

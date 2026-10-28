@@ -370,6 +370,29 @@ async fn definition_maps_by_selection_range_containment() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn definition_landing_in_impl_header_maps_to_self_type() {
+    let fixture = Fixture::new();
+    let call = fixture.candidate("helper", "area");
+    let self_type_at: Position =
+        serde_json::from_value(fixture.range("impl Shape for ", "Circle")["start"].clone())
+            .unwrap();
+    let scenario = json!({"responses": [
+        respond("textDocument/definition", fixture.position(&call),
+            json!([fixture.location("impl Shape for ", "Circle")])),
+        respond("textDocument/definition", self_type_at,
+            json!([fixture.location("pub struct ", "Circle")])),
+    ]});
+    let report = fixture.enrich(scenario).await;
+    assert_eq!(reason_of(&report, &call), None, "{:#?}", report.unresolved);
+    assert!(has_edge(
+        &report,
+        &node("src/lib.rs::<Circle as Shape>::area", NodeKind::Method),
+        EdgeKind::References,
+        &node("src/lib.rs::Circle", NodeKind::Struct)
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn implementation_on_trait_landing_in_impl_block_maps_to_self_type() {
     let fixture = Fixture::new();
     let shape_at: Position =
