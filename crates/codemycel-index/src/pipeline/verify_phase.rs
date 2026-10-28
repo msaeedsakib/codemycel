@@ -126,9 +126,16 @@ pub fn run(
                 config_diagnostics: Vec::new(),
             }
         } else {
-            let scip_files: Vec<&FileView> = files
+            let server = |root: &Root| registry.server_for(root.language).map(|s| s.name());
+            let scip_covered = &scip_covered;
+            let others: Vec<&FileView> = per_root
                 .iter()
-                .filter(|file| scip_covered.contains(file))
+                .filter(|(other, _)| server(other).is_some() && server(other) == server(root))
+                .flat_map(|(other, files)| {
+                    files
+                        .iter()
+                        .filter(move |file| *other != root || scip_covered.contains(*file))
+                })
                 .filter_map(|file| view.file(file))
                 .collect();
             let lsp = enrich_root(
@@ -136,7 +143,7 @@ pub fn run(
                 config,
                 root,
                 &lsp_files,
-                &scip_files,
+                &others,
                 &view,
                 registry,
                 sources,
@@ -191,15 +198,16 @@ struct RootOutcome {
     config_diagnostics: Vec<String>,
 }
 
-/// Enriches the root's LSP files. Traits and interfaces in the root's SCIP files are asked for
-/// their implementers too, since an implementer in an LSP file is this server's to write.
+/// Enriches the root's LSP files. Traits and interfaces in `others`, the files this server did
+/// not enrich but can answer for, are asked for their implementers too, since an implementer in
+/// one of the root's LSP files is this server's to write.
 #[allow(clippy::too_many_arguments)]
 fn enrich_root(
     repo_root: &Path,
     config: &Config,
     root: &Root,
     files: &[RepoPath],
-    scip_files: &[&FileView],
+    others: &[&FileView],
     view: &IndexView,
     registry: &Registry,
     sources: &Sources<'_>,
@@ -258,7 +266,7 @@ fn enrich_root(
         Err(reason) => return degraded(reason, Some(info)),
     };
     let mut report = resolver.enrich_files(files);
-    for file in scip_files {
+    for file in others {
         report
             .edges
             .extend(implementer_edges(&resolver, file, VerifiedBy::Lsp));

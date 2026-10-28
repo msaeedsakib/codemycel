@@ -224,6 +224,59 @@ fn edge_discovered_from_other_side_is_written_only_by_owner() {
 }
 
 #[test]
+fn implementer_in_another_root_is_written_by_its_own_root() {
+    let repo = Repo::new(&[
+        ("a/Cargo.toml", "[package]\nname = \"a\"\nversion = \"0.1.0\"\n"),
+        ("a/src/lib.rs", "pub trait T {\n    fn go(&self);\n}\n"),
+        ("b/Cargo.toml", "[package]\nname = \"b\"\nversion = \"0.1.0\"\n"),
+        (
+            "b/src/lib.rs",
+            "pub struct S;\n\nimpl a::T for S {\n    fn go(&self) {}\n}\n",
+        ),
+    ]);
+    let at = repo.location("a/src/lib.rs", "pub trait ", "T")["range"]["start"].clone();
+    let implementation = json!({"method": "textDocument/implementation", "uri": "a/src/lib.rs",
+        "line": at["line"], "character": at["character"],
+        "result": [repo.location("b/src/lib.rs", "pub struct ", "S")]});
+    let adapter = FakeAdapter::new(&repo.scenario(json!([implementation])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), None);
+    let trait_t = node("a/src/lib.rs::T", NodeKind::Trait);
+    let struct_s = node("b/src/lib.rs::S", NodeKind::Struct);
+    let id = run
+        .store
+        .node_by_semantic_path(&struct_s.path, Some(struct_s.kind))
+        .unwrap()[0]
+        .id;
+    let implements: Vec<_> = run
+        .store
+        .edges_from(id, &[EdgeKind::Implements])
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.edge.dst == trait_t)
+        .collect();
+    assert_eq!(implements.len(), 1, "{implements:#?}");
+    assert_eq!(implements[0].edge.verified_by, VerifiedBy::Lsp);
+    let root_b = run
+        .store
+        .roots()
+        .unwrap()
+        .into_iter()
+        .find(|r| r.root.path.as_str() == "b")
+        .unwrap();
+    assert_eq!(implements[0].root_id, Some(root_b.id));
+    let launches = repo.launches();
+    let (_, received) = launches
+        .iter()
+        .find(|(root, _)| root.ends_with("/b"))
+        .unwrap();
+    assert!(received.iter().any(|message| {
+        message["method"] == "textDocument/implementation"
+            && message["params"]["textDocument"]["uri"] == repo.uri("a/src/lib.rs")
+    }));
+}
+
+#[test]
 fn scip_implementers_are_kept_only_for_implementing_kinds() {
     let repo = Repo::new(&[
         ("Cargo.toml", MANIFEST),
