@@ -1,6 +1,7 @@
 mod classify;
 mod filter;
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 
@@ -12,8 +13,8 @@ pub use filter::ALWAYS_IGNORED;
 
 use crate::{IndexError, Registry};
 
-/// Lists the repository's files. Ignored files are not listed at all; every other
-/// file is, with a skip reason when it will not be parsed.
+/// Lists the repository's files. Ignored files are not listed at all unless git tracks them;
+/// every other file is, with a skip reason when it will not be parsed.
 pub struct Walker<'a> {
     repo_root: PathBuf,
     config: &'a Config,
@@ -29,11 +30,11 @@ impl<'a> Walker<'a> {
         }
     }
 
-    /// Sorted by path. Unreadable directories and paths that are not UTF-8 are left out.
+    /// Sorted by path. Unreadable directories and paths with no repository path are left out.
     pub fn walk(&self) -> Result<Vec<FileRecord>, IndexError> {
         let config_ignore = filter::config_matcher(&self.repo_root, &self.config.ignore)?;
-        let mut paths = Vec::new();
-        for entry in filter::walker(&self.repo_root, config_ignore) {
+        let mut paths = BTreeMap::new();
+        for entry in filter::walker(&self.repo_root, config_ignore.clone()) {
             let entry = match entry {
                 Ok(entry) => entry,
                 Err(error) => {
@@ -48,11 +49,18 @@ impl<'a> Walker<'a> {
                 .path()
                 .strip_prefix(&self.repo_root)
                 .unwrap_or(entry.path());
-            match relative.to_str() {
-                Some(text) => paths.push((RepoPath::new(text)?, entry.into_path())),
-                None => tracing::warn!("skipping non-UTF-8 path {}", relative.display()),
+            if let Some(path) = repo_path(relative) {
+                paths.insert(path, entry.into_path());
             }
         }
+        for relative in filter::tracked_ignored(&self.repo_root, &config_ignore) {
+            if let Some(path) = repo_path(&relative) {
+                paths
+                    .entry(path)
+                    .or_insert_with(|| self.repo_root.join(&relative));
+            }
+        }
+        let paths: Vec<_> = paths.into_iter().collect();
         let mut records = paths
             .par_iter()
             .map(|(path, absolute)| self.record(path, absolute))
@@ -92,5 +100,25 @@ impl<'a> Walker<'a> {
             skip_reason,
             scip_covered: false,
         })
+    }
+}
+
+/// `relative` as a repository path, or `None` with a warning when it is not UTF-8, holds a
+/// backslash outside Windows (where it is part of a file name), or is otherwise rejected.
+fn repo_path(relative: &Path) -> Option<RepoPath> {
+    let Some(text) = relative.to_str() else {
+        tracing::warn!("skipping non-UTF-8 path {}", relative.display());
+        return None;
+    };
+    if cfg!(not(windows)) && text.contains('\\') {
+        tracing::warn!("skipping {text}: a backslash cannot appear in a repository path");
+        return None;
+    }
+    match RepoPath::new(text) {
+        Ok(path) => Some(path),
+        Err(error) => {
+            tracing::warn!("skipping {text}: {error}");
+            None
+        }
     }
 }
