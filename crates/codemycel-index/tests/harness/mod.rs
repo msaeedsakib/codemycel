@@ -4,9 +4,10 @@
 
 use std::path::{Path, PathBuf};
 
-use codemycel_core::ServerAdapter;
 use codemycel_core::config::Config;
+use codemycel_core::query::QueryEngine;
 use codemycel_core::store::{Store, StoreRead};
+use codemycel_core::{LanguageAdapter, ServerAdapter};
 use codemycel_index::{
     BatchServers, Pipeline, PipelineReport, Registry, Sources, SyncMode, SyncReport,
 };
@@ -191,6 +192,17 @@ pub fn assert_matches_expected(fixture_dir: &Path) {
 }
 
 impl FixtureIndex {
+    /// A query engine over a read-only connection to this index, reading sources from
+    /// `repo_root`.
+    pub fn engine<'a>(
+        &self,
+        repo_root: &Path,
+        adapters: &'a [Box<dyn LanguageAdapter>],
+    ) -> QueryEngine<'a> {
+        let store = Store::open(&self._dir.path().join("index.db"), true).unwrap();
+        QueryEngine::open(repo_root, store, adapters)
+    }
+
     pub fn dump(&self, dump: Dump) -> String {
         match dump {
             Dump::Nodes => self.store.dump_nodes(),

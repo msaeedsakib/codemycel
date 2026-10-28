@@ -1,4 +1,5 @@
 mod files;
+pub mod tool;
 
 use std::collections::BTreeSet;
 use std::io;

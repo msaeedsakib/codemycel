@@ -5,6 +5,7 @@ mod error;
 mod locate;
 mod lock;
 pub mod notes;
+mod open;
 pub mod pipeline;
 mod registry;
 mod repo_registry;
@@ -20,6 +21,8 @@ pub use error::IndexError;
 pub use locate::{INDEX_FILE_NAME, RepoLocation, RepoLocator};
 pub use lock::{Lock, LockGuard, LockKind};
 pub use notes::NotesReconciler;
+pub use notes::tool::{NoteRequest, NoteTool};
+pub use open::{Opened, open_or_rebuild, sibling};
 pub use pipeline::{
     Phase, Pipeline, PipelineReport, Progress, Scip, Sources, SyncMode, SyncReport,
 };
