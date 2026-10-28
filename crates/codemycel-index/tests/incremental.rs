@@ -8,8 +8,10 @@ use std::path::{Path, PathBuf};
 use codemycel_core::config::Config;
 use codemycel_core::store::{Store, StoreRead};
 use codemycel_core::{DegradeReason, Language, RepoPath};
-use codemycel_index::{Registry, SyncMode, SyncReport};
-use codemycel_lsp::Provisioner;
+use codemycel_index::{
+    BatchServers, Pipeline, Registry, ServerPool, Servers, Sources, SyncMode, SyncReport,
+};
+use codemycel_lsp::{EnrichOptions, Provisioner};
 use codemycel_parse::rust::RustAdapter;
 use harness::{fixture, fixture_copy, index_fixture_full, local_provisioner, sync};
 use tempfile::TempDir;
@@ -65,6 +67,28 @@ impl Session {
             provisioner,
             mode,
         )
+    }
+
+    /// A sync through `servers` in place of batch servers.
+    fn sync_through(&mut self, servers: &dyn Servers, mode: SyncMode) -> SyncReport {
+        let sources = Sources {
+            servers,
+            scip: None,
+            progress: &(),
+        };
+        Pipeline::sync(
+            &self.dir,
+            &self.config,
+            &mut self.store,
+            &self.registry,
+            &sources,
+            mode,
+        )
+        .unwrap()
+    }
+
+    fn edges(&self) -> String {
+        self.store.dump_edges().unwrap()
     }
 
     fn edit(&self, file: &str, from: &str, to: &str) {
@@ -186,6 +210,17 @@ fn partition(store: &Store) -> BTreeSet<Vec<String>> {
 
 fn provisioner_for(language: Language) -> Option<Provisioner> {
     local_provisioner(Registry::default().server_for(language).unwrap())
+}
+
+/// Warm servers over the machine's real servers, as `local_provisioner` finds them.
+fn pool(registry: &Registry) -> ServerPool<'_> {
+    ServerPool::new(
+        registry,
+        codemycel_core::config::home_dir().unwrap(),
+        false,
+        EnrichOptions::default(),
+        ServerPool::IDLE_TIMEOUT,
+    )
 }
 
 #[test]
@@ -311,8 +346,17 @@ fn root_that_loses_its_server_degrades_whole_and_recovers_whole() {
     assert_eq!(degraded(&lost), [Some(DegradeReason::NoServer)]);
     session.assert_matches_fresh(&provisioner, no_servers());
 
+    let untouched = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(untouched.changes.is_empty());
+    assert!(
+        untouched.pipeline.statuses.is_empty(),
+        "a degraded root without affected files starts no server"
+    );
+    assert_eq!(untouched.reverified, 0);
+    session.assert_matches_fresh(&provisioner, no_servers());
+
+    session.edit("crates/cli/src/main.rs", "MAX_SHAPES / 4", "MAX_SHAPES / 8");
     let back = session.sync(&provisioner, SyncMode::Incremental);
-    assert!(back.changes.is_empty());
     assert_eq!(degraded(&back), [None]);
     session.assert_matches_fresh(&provisioner, Registry::default());
 }
@@ -549,4 +593,343 @@ fn mention_appears_when_name_becomes_unique_and_disappears_when_duplicated() {
         "a mention follows a unique name to its new file"
     );
     session.assert_matches_fresh(&provisioner, parse_only());
+}
+
+#[test]
+fn removed_re_export_reverifies_its_importers() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.sync(&provisioner, SyncMode::Full);
+    let circle = "packages/app/src/main.ts::build (function)\treferences\tpackages/core/src/shapes.ts::Circle (class)";
+    assert!(session.edges().contains(circle), "{}", session.edges());
+
+    session.edit(
+        "packages/core/src/index.ts",
+        "export { Base, Circle, Square, Kind }",
+        "export { Base, Square, Kind }",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!session.edges().contains(circle), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+
+    session.edit(
+        "packages/core/src/index.ts",
+        "export { Base, Square, Kind } from \"./shapes\";",
+        "export { Base, Square, Kind } from \"./shapes\";\nexport { Circle } from \"./shapes\";",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+    assert!(session.edges().contains(circle), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn rust_re_export_reaches_callers_both_ways() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("rust/workspace-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "crates/core/src/hidden.rs",
+        "pub fn hidden_helper() -> usize {\n    1\n}\n",
+    );
+    session.edit(
+        "crates/core/src/lib.rs",
+        "mod circle;",
+        "mod circle;\nmod hidden;",
+    );
+    session.edit(
+        "crates/cli/src/main.rs",
+        "MAX_SHAPES / 2",
+        "MAX_SHAPES / 2 + fixture_core::hidden_helper()",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+    let call = "crates/cli/src/main.rs::config (function)\tcalls\tcrates/core/src/hidden.rs::hidden_helper (function)";
+    assert!(!session.edges().contains(call), "{}", session.edges());
+
+    session.edit(
+        "crates/core/src/lib.rs",
+        "pub use render::Render;",
+        "pub use render::Render;\npub use hidden::hidden_helper;",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+    assert!(session.edges().contains(call), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+
+    session.edit(
+        "crates/core/src/lib.rs",
+        "\npub use hidden::hidden_helper;",
+        "",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!session.edges().contains(call), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn added_file_reverifies_files_naming_it_by_module_path() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "packages/core/src/extra.ts",
+        "import * as later from \"./later\";\nimport \"./empty\";\nexport * from \"./later\";\n\nexport const doubled = later.value * 2;\n",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+    let import = "packages/core/src/extra.ts (file)\timports\tpackages/core/src/later.ts (file)";
+    assert!(!session.edges().contains(import), "{}", session.edges());
+
+    session.write("packages/core/src/later.ts", "export const value = 1;\n");
+    session.write("packages/core/src/empty.ts", "");
+    session.sync(&provisioner, SyncMode::Incremental);
+    assert!(session.edges().contains(import), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+
+    session.remove("packages/core/src/later.ts");
+    session.remove("packages/core/src/empty.ts");
+    session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!session.edges().contains(import), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn added_rust_module_file_reverifies_its_glob_re_export() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("rust/workspace-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.edit(
+        "crates/core/src/lib.rs",
+        "mod circle;",
+        "mod circle;\nmod later;\npub use later::*;",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+
+    session.write(
+        "crates/core/src/later.rs",
+        "pub fn later_value() -> usize {\n    1\n}\n",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn sibling_package_manifest_edit_reverifies_its_importers() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.sync(&provisioner, SyncMode::Full);
+    let import = "packages/app/src/main.ts (file)\timports\tpackages/core/src/index.ts (file)";
+    assert!(session.edges().contains(import), "{}", session.edges());
+
+    session.edit(
+        "packages/core/package.json",
+        "\"main\": \"src/index.ts\"",
+        "\"main\": \"src/math.ts\"",
+    );
+    let report = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!report.full);
+    assert!(!session.edges().contains(import), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn sibling_crate_manifest_edit_reverifies_its_dependents() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("repo");
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "alpha/Cargo.toml",
+        "[package]\nname = \"alpha\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    session.write("alpha/src/lib.rs", "pub fn shared() -> usize {\n    1\n}\n");
+    session.write(
+        "beta/Cargo.toml",
+        "[package]\nname = \"beta\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nalpha = { path = \"../alpha\" }\n",
+    );
+    session.write(
+        "beta/src/lib.rs",
+        "pub fn user() -> usize {\n    alpha::shared()\n}\n",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+    let call = "beta/src/lib.rs::user (function)\tcalls\talpha/src/lib.rs::shared (function)";
+    assert!(session.edges().contains(call), "{}", session.edges());
+
+    session.edit(
+        "alpha/Cargo.toml",
+        "edition = \"2024\"\n",
+        "edition = \"2024\"\n\n[lib]\nname = \"alpha_core\"\n",
+    );
+    let report = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!report.full);
+    assert!(!session.edges().contains(call), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn extended_config_outside_every_root_reverifies_its_roots() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write("configs/base.json", "{\n  \"compilerOptions\": {}\n}\n");
+    session.edit(
+        "packages/app/tsconfig.json",
+        "\"compilerOptions\"",
+        "\"extends\": \"../../configs/base\",\n  \"compilerOptions\"",
+    );
+    session.write(
+        "packages/app/src/extra.ts",
+        "import { sum } from \"@lib/math\";\n\nexport const total = sum([1, 2]);\n",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+    let import = "packages/app/src/extra.ts (file)\timports\tpackages/core/src/math.ts (file)";
+    assert!(!session.edges().contains(import), "{}", session.edges());
+
+    session.edit(
+        "configs/base.json",
+        "\"compilerOptions\": {}",
+        "\"compilerOptions\": { \"paths\": { \"@lib/*\": [\"../packages/core/src/*\"] } }",
+    );
+    let report = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!report.full);
+    assert!(session.edges().contains(import), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn warm_server_reloads_an_edited_manifest_before_answering() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("rust/workspace-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    let registry = Registry::default();
+    let pool = pool(&registry);
+    session.write(
+        "crates/extra/Cargo.toml",
+        "[package]\nname = \"fixture-extra\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    session.write(
+        "crates/extra/src/lib.rs",
+        "pub fn extra() -> usize {\n    1\n}\n",
+    );
+    session.edit(
+        "crates/cli/src/main.rs",
+        "MAX_SHAPES / 2",
+        "MAX_SHAPES / 2 + fixture_extra::extra()",
+    );
+    session.sync_through(&pool, SyncMode::Full);
+    let call = "crates/cli/src/main.rs::config (function)\tcalls\tcrates/extra/src/lib.rs::extra (function)";
+    assert!(!session.edges().contains(call), "{}", session.edges());
+
+    session.edit(
+        "crates/cli/Cargo.toml",
+        "fixture-core = { path = \"../core\" }",
+        "fixture-core = { path = \"../core\" }\nfixture-extra = { path = \"../extra\" }",
+    );
+    session.sync_through(&pool, SyncMode::Incremental);
+    assert!(session.edges().contains(call), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+
+    session.edit(
+        "crates/cli/Cargo.toml",
+        "\nfixture-extra = { path = \"../extra\" }",
+        "",
+    );
+    session.sync_through(&pool, SyncMode::Incremental);
+    assert!(!session.edges().contains(call), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn warm_typescript_server_reloads_an_edited_tsconfig() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    let registry = Registry::default();
+    let pool = pool(&registry);
+    session.write(
+        "packages/app/src/extra.ts",
+        "import { sum } from \"@lib/math\";\n\nexport const total = sum([1, 2]);\n",
+    );
+    session.sync_through(&pool, SyncMode::Full);
+    let import = "packages/app/src/extra.ts (file)\timports\tpackages/core/src/math.ts (file)";
+
+    session.edit(
+        "packages/app/tsconfig.json",
+        "\"jsx\": \"react-jsx\"",
+        "\"jsx\": \"react-jsx\",\n    \"paths\": { \"@lib/*\": [\"../core/src/*\"] }",
+    );
+    session.sync_through(&pool, SyncMode::Incremental);
+    assert!(session.edges().contains(import), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn warm_servers_catch_up_on_a_sync_another_process_ran() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    let registry = Registry::default();
+    let pool = pool(&registry);
+    session.sync_through(&pool, SyncMode::Full);
+
+    session.edit(
+        "packages/core/src/math.ts",
+        "export const TAU",
+        "export const ONE = 1;\nexport const TWO = 2;\nexport const THREE = 3;\n\nexport const TAU",
+    );
+    let batch = BatchServers {
+        provisioner: &provisioner,
+        options: EnrichOptions::default(),
+    };
+    session.sync_through(&batch, SyncMode::Incremental);
+
+    session.edit(
+        "packages/app/src/main.ts",
+        "return core.sum(",
+        "return core.TWO + core.sum(",
+    );
+    session.sync_through(&pool, SyncMode::Incremental);
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn new_implementer_of_a_derived_interface_reaches_the_base() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "packages/core/src/fancy.ts",
+        "import type { Shape } from \"./shapes\";\n\nexport interface Fancy extends Shape {\n  glow(): number;\n}\n",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+
+    session.write(
+        "packages/core/src/lamp.ts",
+        "import type { Fancy } from \"./fancy\";\n\nexport class Lamp implements Fancy {\n  readonly name = \"lamp\";\n\n  area(): number {\n    return 1;\n  }\n\n  glow(): number {\n    return 2;\n  }\n}\n",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+    let overrides = "packages/core/src/lamp.ts::Lamp::area (method)\toverrides\tpackages/core/src/shapes.ts::Shape::area (method)";
+    assert!(session.edges().contains(overrides), "{}", session.edges());
+    session.assert_matches_fresh(&provisioner, Registry::default());
 }
