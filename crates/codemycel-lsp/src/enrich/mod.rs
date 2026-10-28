@@ -439,6 +439,9 @@ impl<'a> Enricher<'a> {
         if candidate.role == CandidateRole::Import {
             let file_node = locations.iter().find_map(|location| {
                 let file = self.mapper.repo_path(&location.uri).ok()?;
+                if file == candidate.file {
+                    return None;
+                }
                 Some(self.view.file(&file)?.file_node.clone())
             });
             if let Some(target) = file_node {

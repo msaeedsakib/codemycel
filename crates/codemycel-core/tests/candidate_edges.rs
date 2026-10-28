@@ -50,6 +50,11 @@ fn confirmed_candidates_become_the_edge_their_role_names() {
         ))
     );
     assert_eq!(kind_of(CandidateRole::Import, run.clone(), &file), None);
+    assert_eq!(kind_of(CandidateRole::Value, file.clone(), &file), None);
+    assert_eq!(
+        kind_of(CandidateRole::Call, run.clone(), &run),
+        Some((run.clone(), EdgeKind::Calls, run.clone()))
+    );
     assert_eq!(
         kind_of(CandidateRole::Export, run, &helper),
         Some((file, EdgeKind::Exports, helper))
