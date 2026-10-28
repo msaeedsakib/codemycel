@@ -25,6 +25,7 @@ pub(super) enum SymbolCapture {
 pub(super) enum LocalCapture {
     Scope,
     Definition,
+    Exclude,
     Ignored,
 }
 
@@ -52,6 +53,7 @@ impl Compiled {
         let local_captures = classify(&locals, "locals", |name| match name {
             "local.scope" => Some(LocalCapture::Scope),
             "local.definition" => Some(LocalCapture::Definition),
+            "local.exclude" => Some(LocalCapture::Exclude),
             "local.reference" => Some(LocalCapture::Ignored),
             _ => name.starts_with('_').then_some(LocalCapture::Ignored),
         })?;

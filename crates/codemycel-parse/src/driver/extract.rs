@@ -425,21 +425,26 @@ impl<'a> File<'a> {
     fn locals(&self, query: &Query, captures: &[LocalCapture], tree: &Tree) -> Locals {
         let mut scopes = Vec::new();
         let mut definitions = Vec::new();
+        let mut exclusions = Vec::new();
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(query, tree.root_node(), self.source.as_bytes());
         while let Some(found) = matches.next() {
             for capture in found.captures() {
+                let node = capture.node;
                 match captures[capture.index as usize] {
-                    LocalCapture::Scope => scopes.push(capture.node.byte_range()),
-                    LocalCapture::Definition => definitions.push((
-                        capture.node.byte_range(),
-                        self.text(capture.node).to_owned(),
-                    )),
+                    LocalCapture::Scope => scopes.push(node.byte_range()),
+                    LocalCapture::Definition => {
+                        definitions.push((node.byte_range(), self.text(node).to_owned()))
+                    }
+                    LocalCapture::Exclude => {
+                        let parent = node.parent().unwrap_or(node);
+                        exclusions.push((node.byte_range(), parent.start_byte()));
+                    }
                     LocalCapture::Ignored => {}
                 }
             }
         }
-        Locals::new(scopes, definitions)
+        Locals::new(scopes, definitions, exclusions)
     }
 
     fn text(&self, node: TsNode<'_>) -> &'a str {

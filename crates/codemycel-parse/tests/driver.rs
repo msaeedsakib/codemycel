@@ -27,6 +27,7 @@ const LOCALS: &str = r#"
 (function_item) @local.scope
 (block) @local.scope
 (let_declaration pattern: (identifier) @local.definition)
+(let_declaration value: (_) @local.exclude)
 (parameter pattern: (identifier) @local.definition)
 "#;
 
@@ -150,6 +151,22 @@ fn local_definitions_suppress_candidates() {
         ]
     );
     assert_eq!(parsed.candidates[2].role, CandidateRole::Value);
+}
+
+#[test]
+fn binding_is_not_visible_in_its_own_initialiser() {
+    let parsed = parse(
+        "fn config() {}\nfn a() {\n    let config = config();\n    use_it(config);\n    let other = { let inner = 1; use_it(inner) };\n}\n",
+    );
+    let found: Vec<String> = parsed
+        .candidates
+        .iter()
+        .map(|c| format!("{}:{} {} {}", c.at.line, c.at.col, c.role, c.text))
+        .collect();
+    assert_eq!(
+        found,
+        ["3:17 call config", "4:4 call use_it", "5:33 call use_it"]
+    );
 }
 
 #[test]

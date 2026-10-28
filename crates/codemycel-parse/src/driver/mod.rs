@@ -23,7 +23,9 @@
 //! value wins.
 //!
 //! `locals`: `@local.scope` and `@local.definition`. A candidate whose text equals a definition in
-//! a scope enclosing it, starting no later than it, is dropped.
+//! a scope enclosing it, starting no later than it, is dropped. `@local.exclude` marks an
+//! initialiser (the value of `let x = …`, the iterator of `for x in …`): inside it, definitions
+//! that start earlier in the same parent statement do not apply.
 //!
 //! Captures whose names start with `_` are free for predicates. Any other name is an error.
 //!
