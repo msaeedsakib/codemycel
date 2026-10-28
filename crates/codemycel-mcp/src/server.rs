@@ -27,8 +27,8 @@ impl ServerHandler for Codemycel {
     }
 }
 
-/// Serves the MCP tools for the repository at `repo_root` over stdio until stdin closes or SIGTERM arrives, then
-/// stops the session's watcher and servers and releases its locks.
+/// Serves the MCP tools for the repository at `repo_root` over stdio until stdin closes or
+/// SIGTERM arrives, then stops the session's watcher and servers and releases its locks.
 pub fn serve(repo_root: &Path, options: SessionOptions) -> std::io::Result<()> {
     let session = Arc::new(Session::new(repo_root, options));
     let runtime = tokio::runtime::Builder::new_multi_thread()
