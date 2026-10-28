@@ -2,6 +2,7 @@ mod home_config;
 pub mod paths;
 mod repo_config;
 mod server;
+mod writer;
 
 use std::collections::BTreeMap;
 use std::io;
@@ -14,6 +15,7 @@ pub use home_config::HomeConfig;
 pub use paths::home_dir;
 pub use repo_config::{ByteSize, IndexConfig, RepoConfig, RootOverride, ScipConfig};
 pub use server::ServerConfig;
+pub use writer::ConfigWriter;
 
 use crate::model::Language;
 
@@ -45,6 +47,8 @@ pub const TEMPLATE: &str = r#"# codemycel repository configuration. Every key is
 pub enum ConfigError {
     #[error("cannot read {}: {source}", path.display())]
     Read { path: PathBuf, source: io::Error },
+    #[error("cannot write {}: {source}", path.display())]
+    Write { path: PathBuf, source: io::Error },
     #[error("invalid configuration in {}: {source}", path.display())]
     Parse {
         path: PathBuf,

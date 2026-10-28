@@ -175,3 +175,37 @@ fn max_file_size_accepts_units_and_bare_integers() {
     assert!(size("\"2MB\"").unwrap_err().contains("invalid size"));
     assert!(size("-1").is_err());
 }
+
+#[test]
+fn config_writer_changes_only_the_target_key() {
+    let repo = TempDir::new().unwrap();
+    let home = TempDir::new().unwrap();
+    let path = paths::repo_config_path(repo.path());
+    let read = || std::fs::read_to_string(&path).unwrap();
+
+    config::ConfigWriter::set_scip_commit(repo.path(), "abc123").unwrap();
+    let first = read();
+    let added: Vec<&str> = first
+        .lines()
+        .filter(|line| !config::TEMPLATE.lines().any(|t| t == *line))
+        .collect();
+    assert_eq!(added, ["commit = \"abc123\""]);
+    assert_eq!(first.lines().count(), config::TEMPLATE.lines().count() + 1);
+    let loaded = Config::load_with_home(repo.path(), home.path()).unwrap();
+    assert_eq!(loaded.scip_commit.as_deref(), Some("abc123"));
+
+    config::ConfigWriter::set_scip_commit(repo.path(), "def456").unwrap();
+    assert_eq!(read(), first.replace("abc123", "def456"));
+
+    let custom = "# mine\n[index]\nignore = [\"x/**\"] # keep\n\n[scip]\npath = \"out/index.scip\"\ncommit = \"old\" # stale\n\n[servers.rust]\nbuild_scripts = false\n";
+    write_repo_config(repo.path(), custom);
+    config::ConfigWriter::set_scip_commit(repo.path(), "new").unwrap();
+    assert_eq!(
+        read(),
+        custom.replace("commit = \"old\" # stale", "commit = \"new\"")
+    );
+
+    write_repo_config(repo.path(), "[index]\nignore = []\n");
+    config::ConfigWriter::set_scip_commit(repo.path(), "sha").unwrap();
+    assert_eq!(read(), "[index]\nignore = []\n\n[scip]\ncommit = \"sha\"\n");
+}
