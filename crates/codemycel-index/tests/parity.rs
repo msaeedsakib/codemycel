@@ -15,7 +15,7 @@ use codemycel_core::{
     Candidate, Language, NodeRef, Occurrence, RepoPath, Resolver, ResolverSource, SourceFile,
     Verdict,
 };
-use codemycel_index::{Pipeline, Registry, Sources};
+use codemycel_index::{BatchServers, Pipeline, Registry, Scip, Sources, SyncMode};
 use codemycel_lsp::{EnrichOptions, Provisioner};
 use codemycel_scip::{ScipImporter, ScipIndex};
 use harness::{fixture, fixture_copy, local_provisioner};
@@ -59,12 +59,28 @@ fn dumps(dir: &Path, provisioner: &Provisioner, scip: Option<&dyn ResolverSource
     let temp = tempfile::tempdir().unwrap();
     let config = Config::load_with_home(dir, &temp.path().join("home")).unwrap();
     let mut store = Store::create(&temp.path().join("index.db")).unwrap();
-    let sources = Sources {
+    let servers = BatchServers {
         provisioner,
-        scip,
         options: EnrichOptions::default(),
     };
-    Pipeline::run(dir, &config, &mut store, &Registry::default(), &sources).unwrap();
+    let sources = Sources {
+        servers: &servers,
+        scip: scip.map(|source| Scip {
+            source,
+            hash: "parity",
+        }),
+        progress: &(),
+    };
+    let registry = Registry::default();
+    Pipeline::sync(
+        dir,
+        &config,
+        &mut store,
+        &registry,
+        &sources,
+        SyncMode::Full,
+    )
+    .unwrap();
     let edges = store.dump_edges().unwrap();
     let unresolved = store.dump_unresolved().unwrap();
     edges

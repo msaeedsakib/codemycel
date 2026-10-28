@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use codemycel_core::store::StoreError;
 use codemycel_core::{AdapterError, ModelError};
+use codemycel_scip::ScipError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -19,4 +20,6 @@ pub enum IndexError {
     Adapter(#[from] AdapterError),
     #[error(transparent)]
     Model(#[from] ModelError),
+    #[error(transparent)]
+    Scip(#[from] ScipError),
 }

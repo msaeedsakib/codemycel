@@ -8,7 +8,7 @@ use std::path::Path;
 use codemycel_core::config::{Config, HomeConfig, RepoConfig, ServerConfig};
 use codemycel_core::store::{Store, StoreRead};
 use codemycel_core::{Arch, Language, Os, ReadinessStrategy, ServerAdapter, Toolchain};
-use codemycel_index::{Pipeline, Registry, Sources};
+use codemycel_index::{BatchServers, Pipeline, Registry, Sources, SyncMode};
 use codemycel_lsp::adapters::typescript7::TypeScript7;
 use codemycel_lsp::{EnrichOptions, Provisioner};
 use fake::{FakeAdapter, Repo, fake_lsp};
@@ -135,13 +135,25 @@ fn tsconfig_diagnostics_are_recorded_without_degrading() {
         Registry::default().with_servers(vec![(Language::TypeScript, Box::new(adapter))]);
     let db = tempfile::tempdir().unwrap();
     let mut store = Store::create(&db.path().join("index.db")).unwrap();
-    let sources = Sources {
+    let servers = BatchServers {
         provisioner: &provisioner,
-        scip: None,
         options: EnrichOptions::default(),
     };
+    let sources = Sources {
+        servers: &servers,
+        scip: None,
+        progress: &(),
+    };
 
-    Pipeline::run(repo.path(), &config, &mut store, &registry, &sources).unwrap();
+    Pipeline::sync(
+        repo.path(),
+        &config,
+        &mut store,
+        &registry,
+        &sources,
+        SyncMode::Full,
+    )
+    .unwrap();
 
     let roots = store.roots().unwrap();
     let [root] = roots.as_slice() else {

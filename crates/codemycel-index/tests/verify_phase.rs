@@ -11,7 +11,7 @@ use codemycel_core::{
     RepoPath, Resolver, ResolverSource, SemanticPath, SourceFile, Toolchain, UnresolvedReason,
     Verdict, VerifiedBy,
 };
-use codemycel_index::{Pipeline, PipelineReport, Registry, Sources};
+use codemycel_index::{BatchServers, Pipeline, PipelineReport, Registry, Scip, Sources, SyncMode};
 use codemycel_lsp::{EnrichOptions, Provisioner};
 use fake::{FakeAdapter, Repo};
 use serde_json::{Value, json};
@@ -106,16 +106,30 @@ fn run(
     let db = tempfile::tempdir().unwrap();
     let mut store = Store::create(&db.path().join("index.db")).unwrap();
     let registry = Registry::default().with_servers(vec![(Language::Rust, Box::new(adapter))]);
-    let sources = Sources {
+    let servers = BatchServers {
         provisioner: &provisioner,
-        scip,
         options: EnrichOptions::default(),
     };
-    let report =
-        Pipeline::run(repo.path(), &repo.config(), &mut store, &registry, &sources).unwrap();
+    let sources = Sources {
+        servers: &servers,
+        scip: scip.map(|source| Scip {
+            source,
+            hash: "stub",
+        }),
+        progress: &(),
+    };
+    let report = Pipeline::sync(
+        repo.path(),
+        &repo.config(),
+        &mut store,
+        &registry,
+        &sources,
+        SyncMode::Full,
+    )
+    .unwrap();
     Run {
         store,
-        report,
+        report: report.pipeline,
         _db: db,
     }
 }

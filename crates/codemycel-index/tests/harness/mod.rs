@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 use codemycel_core::ServerAdapter;
 use codemycel_core::config::Config;
 use codemycel_core::store::{Store, StoreRead};
-use codemycel_index::{Pipeline, PipelineReport, Registry, Sources};
+use codemycel_index::{
+    BatchServers, Pipeline, PipelineReport, Registry, Sources, SyncMode, SyncReport,
+};
 use codemycel_lsp::{EnrichOptions, Provisioner};
 use tempfile::TempDir;
 
@@ -119,7 +121,7 @@ fn restore_links(copy: &Path) {
     }
 }
 
-/// `Pipeline::run` with `registry`'s servers, found by `provisioner`, and no SCIP index.
+/// A full sync with `registry`'s servers, found by `provisioner`, and no SCIP index.
 pub fn index_fixture_full(
     dir: &Path,
     registry: Registry,
@@ -130,17 +132,40 @@ pub fn index_fixture_full(
     std::fs::create_dir(&home).unwrap();
     let config = Config::load_with_home(dir, &home).unwrap();
     let mut store = Store::create(&temp.path().join("index.db")).unwrap();
-    let sources = Sources {
+    let report = sync(
+        dir,
+        &config,
+        &mut store,
+        &registry,
         provisioner,
-        scip: None,
-        options: EnrichOptions::default(),
-    };
-    let report = Pipeline::run(dir, &config, &mut store, &registry, &sources).unwrap();
+        SyncMode::Full,
+    );
     FixtureIndex {
         _dir: temp,
         store,
-        report,
+        report: report.pipeline,
     }
+}
+
+/// `Pipeline::sync` with batch servers found by `provisioner` and no SCIP index.
+pub fn sync(
+    dir: &Path,
+    config: &Config,
+    store: &mut Store,
+    registry: &Registry,
+    provisioner: &Provisioner,
+    mode: SyncMode,
+) -> SyncReport {
+    let servers = BatchServers {
+        provisioner,
+        options: EnrichOptions::default(),
+    };
+    let sources = Sources {
+        servers: &servers,
+        scip: None,
+        progress: &(),
+    };
+    Pipeline::sync(dir, config, store, registry, &sources, mode).unwrap()
 }
 
 /// A provisioner over the machine's real servers (config, toolchain, `PATH`, and the

@@ -15,12 +15,18 @@ codemycel-scip.workspace = true
 
 blake3.workspace = true
 ignore.workspace = true
+jiff.workspace = true
+notify.workspace = true
+petgraph.workspace = true
 rayon.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
 similar.workspace = true
 tempfile.workspace = true
 
