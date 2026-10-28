@@ -251,6 +251,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "codemycel-core",
+ "globset",
  "serde",
  "serde_json",
  "tempfile",
