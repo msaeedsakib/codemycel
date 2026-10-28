@@ -51,17 +51,20 @@ fn update_check_runs_at_most_daily_and_respects_env() {
         .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
         .args(["status", "--repo"])
         .arg(repo.path())
-        .assert();
+        .assert()
+        .code(2);
     checked(home.path(), &stub)
         .env("CODEMYCEL_TEST_DENY_NETWORK", "1")
         .args(["status", "--repo"])
         .arg(repo.path())
-        .assert();
+        .assert()
+        .code(2);
     assert_eq!(stub.hits(), 1, "disabled checks make no request");
     checked(home.path(), &stub)
         .args(["status", "--repo"])
         .arg(repo.path())
-        .assert();
+        .assert()
+        .code(2);
     assert_eq!(stub.hits(), 2, "a day later it checks again");
 
     let current = latest(env!("CARGO_PKG_VERSION"));
@@ -82,12 +85,14 @@ fn update_check_is_skipped_for_mcp_and_ui() {
     checked(home.path(), &stub)
         .args(["ui", "--repo"])
         .arg(repo.path())
-        .assert();
+        .assert()
+        .code(1);
     checked(home.path(), &stub)
         .args(["mcp", "--repo"])
         .arg(repo.path())
         .write_stdin("")
-        .assert();
+        .output()
+        .unwrap();
     assert_eq!(stub.hits(), 0);
     assert!(!home.path().join("update-check.json").exists());
 }
