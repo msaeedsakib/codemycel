@@ -28,9 +28,11 @@ globset = "0.4.21"
 ignore = "0.4.34"
 lsp-types = "0.97.0"
 nix = { version = "0.31.3", features = ["signal"] }
+protobuf = "=3.7.2"
 rayon = "1.12.0"
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
+scip = "0.10.0"
 serde_json = "1"
 sha2 = "0.11.1"
 tar = "0.4.46"
