@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Range;
 
-/// Local bindings by scope (spec §6.5).
+/// Local bindings by scope.
 #[derive(Default)]
 pub(super) struct Locals {
     scopes: Vec<Range<usize>>,

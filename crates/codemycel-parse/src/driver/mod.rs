@@ -1,4 +1,4 @@
-//! The generic tree-sitter driver every language adapter runs on (spec §7.2).
+//! The generic tree-sitter driver every language adapter runs on.
 //!
 //! An adapter supplies a grammar, three query sources, and a [`LanguageHooks`]. Capture names:
 //!
@@ -23,7 +23,7 @@
 //! value wins.
 //!
 //! `locals`: `@local.scope` and `@local.definition`. A candidate whose text equals a definition in
-//! a scope enclosing it, starting no later than it, is dropped (spec §6.5).
+//! a scope enclosing it, starting no later than it, is dropped.
 //!
 //! Captures whose names start with `_` are free for predicates. Any other name is an error.
 //!

@@ -3,7 +3,7 @@ use std::path::Path;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use ignore::{Walk, WalkBuilder};
 
-/// Directories never walked, wherever they appear (spec §7.2).
+/// Directories never walked, wherever they appear.
 pub const ALWAYS_IGNORED: [&str; 8] = [
     ".git",
     ".codemycel",

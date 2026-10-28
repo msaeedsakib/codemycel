@@ -7,7 +7,7 @@ pub const HOME_ENV: &str = "CODEMYCEL_HOME";
 pub const REPO_DIR_NAME: &str = ".codemycel";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 
-/// The codemycel home: `CODEMYCEL_HOME` if set, else `<user home>/.codemycel` (spec §13.5).
+/// The codemycel home: `CODEMYCEL_HOME` if set, else `<user home>/.codemycel`.
 pub fn home_dir() -> Result<PathBuf, ConfigError> {
     home_dir_with(|name| std::env::var_os(name), std::env::home_dir())
 }

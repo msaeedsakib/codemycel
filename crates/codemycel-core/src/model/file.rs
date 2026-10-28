@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ByteRange, FileKind, Language, RepoPath, RootId, SkipReason, Span};
 
-/// A language project boundary (spec §4, §8.2). `Store::set_root` assigns its `RootId`.
+/// A language project boundary. `Store::set_root` assigns its `RootId`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Root {
     pub path: RepoPath,
@@ -22,7 +22,7 @@ pub struct FileRecord {
     pub scip_covered: bool,
 }
 
-/// A Rust `impl` block (spec §4). Not a node; maps server results that land on impl headers.
+/// A Rust `impl` block. Not a node; maps server results that land on impl headers.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ImplRecord {
     pub file: RepoPath,

@@ -6,7 +6,7 @@ use codemycel_core::{Language, RepoPath, Root};
 
 use crate::{IndexError, Registry};
 
-/// The roots of every language (spec §8.2) and the mapping of files to them.
+/// The roots of every language and the mapping of files to them.
 pub struct RootDetector {
     roots: Vec<Root>,
 }

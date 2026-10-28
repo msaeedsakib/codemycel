@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{CandidateRole, NodeRef, Occurrence, RepoPath, UnresolvedReason};
 
-/// A reference site whose target is not yet known (spec §6.5).
+/// A reference site whose target is not yet known.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Candidate {
     pub file: RepoPath,
@@ -13,7 +13,7 @@ pub struct Candidate {
     pub at: Occurrence,
 }
 
-/// A resolver's answer for one candidate (spec §4). There is no third state.
+/// A resolver's answer for one candidate. There is no third state.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "verdict")]
 pub enum Verdict {

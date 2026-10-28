@@ -12,7 +12,7 @@ pub use filter::ALWAYS_IGNORED;
 
 use crate::{IndexError, Registry};
 
-/// Lists the repository's files per spec §7.2. Ignored files are not listed at all; every other
+/// Lists the repository's files. Ignored files are not listed at all; every other
 /// file is, with a skip reason when it will not be parsed.
 pub struct Walker<'a> {
     repo_root: PathBuf,

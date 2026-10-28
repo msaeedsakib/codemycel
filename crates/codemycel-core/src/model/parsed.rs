@@ -12,13 +12,13 @@ pub struct ParsedFile {
 }
 
 impl ParsedFile {
-    /// Every node name, for the repository-wide name counts behind mentions (spec §6.7).
+    /// Every node name, for the repository-wide name counts behind mentions.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.nodes.iter().map(|node| node.name.as_str())
     }
 }
 
-/// One row of the search content table (spec §9). `name_split` comes from `text::name_split`.
+/// One row of the search content table. `name_split` comes from `text::name_split`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchDoc {
     pub node: NodeRef,

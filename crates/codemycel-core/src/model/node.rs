@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ByteRange, NodeId, NodeKind, RepoPath, RootId, SemanticPath, Span};
 
-/// A node's identity: semantic path and kind (spec §6.4). The key `Store` maps to a `NodeId`.
+/// A node's identity: semantic path and kind. The key `Store` maps to a `NodeId`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct NodeRef {
     pub path: SemanticPath,
@@ -23,7 +23,7 @@ impl fmt::Display for NodeRef {
     }
 }
 
-/// A node as extracted (spec §6.2). Database ids and the attributes computed after extraction
+/// A node as extracted. Database ids and the attributes computed after extraction
 /// (root, community, unresolved counts) live on `StoredNode`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Node {

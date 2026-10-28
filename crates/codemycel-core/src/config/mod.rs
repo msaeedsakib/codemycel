@@ -17,7 +17,7 @@ pub use server::ServerConfig;
 
 use crate::model::Language;
 
-/// The commented `.codemycel/config.toml` that `init` writes (spec §14). It parses to the defaults.
+/// The commented `.codemycel/config.toml` that `init` writes. It parses to the defaults.
 pub const TEMPLATE: &str = r#"# codemycel repository configuration. Every key is commented out; uncomment one to override its default.
 
 [index]
@@ -111,7 +111,7 @@ impl Config {
         self.servers.get(&language).cloned().unwrap_or_default()
     }
 
-    /// rust-analyzer build scripts and proc-macro expansion; on unless a config turns it off (spec §7.5).
+    /// rust-analyzer build scripts and proc-macro expansion; on unless a config turns it off.
     pub fn build_scripts(&self, language: Language) -> bool {
         self.servers
             .get(&language)

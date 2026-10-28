@@ -27,8 +27,8 @@ pub struct DocsCounts {
     pub mentions: usize,
 }
 
-/// Parses every listed document and manifest, repository-wide and independent of roots (spec
-/// §6.7). A manifest that does not parse declares no package.
+/// Parses every listed document and manifest, repository-wide and independent of roots. A
+/// manifest that does not parse declares no package.
 pub fn prepare(repo_root: &Path, files: &[FileRecord]) -> Result<Prepared, IndexError> {
     let read = |file: &FileRecord| {
         let absolute = repo_root.join(file.path.as_str());
@@ -122,7 +122,7 @@ pub fn write(
 }
 
 /// The code node a backtick span names, when exactly one code node in the repository has that
-/// name (spec §6.7). `name_counts` covers code nodes only.
+/// name. `name_counts` covers code nodes only.
 fn sole_code_node(tx: &Tx<'_>, name: &str) -> Result<Option<NodeRef>, IndexError> {
     if tx.name_count(name)? != 1 {
         return Ok(None);
@@ -261,7 +261,7 @@ impl<'a> Packages<'a> {
 
     /// The workspace package a dependency names: the one package of that name in the same
     /// ecosystem, and for npm only when it is a workspace member or the version uses the
-    /// `workspace:` protocol (spec §6.7).
+    /// `workspace:` protocol.
     fn internal(
         &self,
         from: &PackageParse,

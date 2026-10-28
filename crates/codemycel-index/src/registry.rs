@@ -1,6 +1,6 @@
 use codemycel_core::{Language, LanguageAdapter};
 
-/// The language adapters, in the fixed order Rust, TypeScript, JavaScript (spec §7.1).
+/// The language adapters, in the fixed order Rust, TypeScript, JavaScript.
 pub struct Registry {
     adapters: Vec<Box<dyn LanguageAdapter>>,
 }

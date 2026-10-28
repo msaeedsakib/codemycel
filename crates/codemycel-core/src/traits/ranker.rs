@@ -7,7 +7,7 @@ pub struct SearchHit {
     pub kind: NodeKind,
     pub name: String,
     pub file: Option<RepoPath>,
-    /// FTS5 BM25 with the column weights of spec §10.1; lower is better, as SQLite reports it.
+    /// FTS5 BM25 with per-column weights; lower is better, as SQLite reports it.
     pub bm25: f64,
 }
 
@@ -18,7 +18,7 @@ pub struct ScoredHit {
     pub score: f64,
 }
 
-/// Orders full-text matches for `search` (spec §10.1). Seam for embeddings (spec §18).
+/// Orders full-text matches for `search`. Seam for embeddings.
 pub trait Ranker: Send + Sync {
     fn rank(&self, query: &str, hits: Vec<SearchHit>) -> Vec<ScoredHit>;
 }

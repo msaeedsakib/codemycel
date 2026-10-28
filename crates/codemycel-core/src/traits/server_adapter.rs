@@ -17,7 +17,7 @@ pub enum Arch {
     Aarch64,
 }
 
-/// How the enricher decides a server has loaded its project (spec §7.5 step 2).
+/// How the enricher decides a server has loaded its project.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReadinessStrategy {
     /// Wait for `experimental/serverStatus` with `quiescent: true`; degrade the root on timeout.
@@ -26,11 +26,11 @@ pub enum ReadinessStrategy {
     ProbeDefinition { timeout: Duration },
 }
 
-/// A language toolchain that can supply the server (spec §3, §7.4 step 2), so the provisioner
+/// A language toolchain that can supply the server, so the provisioner
 /// runs these commands without naming a language.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Toolchain {
-    /// Binary the language's roots need; when absent they degrade (spec §7.6).
+    /// Binary the language's roots need; when absent they degrade.
     pub prerequisite: &'static str,
     /// Prints the server binary's path, e.g. `rustup which rust-analyzer`.
     pub locate: &'static [&'static str],
@@ -38,7 +38,7 @@ pub struct Toolchain {
     pub install: &'static [&'static str],
 }
 
-/// The language-server half of a language (spec §7.1, §7.4, §7.5).
+/// The language-server half of a language.
 pub trait ServerAdapter: Send + Sync {
     fn language(&self) -> Language;
 
@@ -59,7 +59,7 @@ pub trait ServerAdapter: Send + Sync {
     /// Path of the binary inside the downloaded archive; `None` when the download is the binary.
     fn archive_member(&self, os: Os) -> Option<&'static str>;
 
-    /// The version a candidate binary reports, or why it is rejected (spec §7.4).
+    /// The version a candidate binary reports, or why it is rejected.
     fn validate(&self, binary: &Path) -> Result<String, String>;
 
     fn launch_args(&self) -> &'static [&'static str];
@@ -71,6 +71,6 @@ pub trait ServerAdapter: Send + Sync {
     /// Requests in flight per server.
     fn request_concurrency(&self) -> usize;
 
-    /// The per-root configuration file whose diagnostics `status` reports (spec §7.6).
+    /// The per-root configuration file whose diagnostics `status` reports.
     fn config_file_name(&self) -> Option<&'static str>;
 }

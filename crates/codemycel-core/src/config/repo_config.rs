@@ -9,7 +9,7 @@ use serde::{Deserialize, Deserializer};
 use super::ServerConfig;
 use crate::model::{Language, RepoPath};
 
-/// `.codemycel/config.toml` as written (spec §14). Absent keys stay absent; `Config` applies defaults.
+/// `.codemycel/config.toml` as written. Absent keys stay absent; `Config` applies defaults.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RepoConfig {
@@ -32,7 +32,7 @@ pub struct IndexConfig {
     pub max_file_size: Option<ByteSize>,
 }
 
-/// A `[[root]]` entry that adds, re-types, or disables a detected root (spec §8.2).
+/// A `[[root]]` entry that adds, re-types, or disables a detected root.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RootOverride {
@@ -46,7 +46,7 @@ pub struct RootOverride {
 #[serde(deny_unknown_fields)]
 pub struct ScipConfig {
     pub path: Option<PathBuf>,
-    /// The commit the SCIP file was generated at (spec §7.7).
+    /// The commit the SCIP file was generated at.
     pub commit: Option<String>,
 }
 

@@ -1,4 +1,4 @@
-//! Markdown documents and headings (spec §6.7).
+//! Markdown documents and headings.
 
 use std::collections::HashMap;
 
@@ -323,7 +323,7 @@ fn heading_level(heading: TsNode<'_>) -> Option<u8> {
     })
 }
 
-/// A backtick span's text with a leading `.` and a trailing `()` stripped (spec §6.7).
+/// A backtick span's text with a leading `.` and a trailing `()` stripped.
 fn mention_text(span: &str) -> Option<String> {
     let text = span.trim();
     let text = text.strip_prefix('.').unwrap_or(text);

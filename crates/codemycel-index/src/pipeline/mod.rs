@@ -30,8 +30,7 @@ pub struct Pipeline;
 
 impl Pipeline {
     /// Walks, detects roots, parses every rooted code file, then the documents and manifests,
-    /// and writes the syntactic graph into an empty store in one transaction (spec §5.3 without
-    /// the resolvers).
+    /// and writes the syntactic graph into an empty store in one transaction. No resolver runs.
     pub fn parse_only(
         repo_root: &Path,
         config: &Config,

@@ -17,7 +17,6 @@ mod upgrade;
 
 use crate::cli::{Command, Context};
 
-/// Process exit status (spec §11.3).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExitCode {
     Ok = 0,

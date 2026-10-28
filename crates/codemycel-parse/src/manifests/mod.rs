@@ -1,4 +1,4 @@
-//! `Cargo.toml` and `package.json` packages (spec §6.7).
+//! `Cargo.toml` and `package.json` packages.
 
 mod cargo;
 mod npm;

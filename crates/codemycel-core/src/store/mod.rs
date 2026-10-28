@@ -12,7 +12,7 @@ pub use error::StoreError;
 pub use read::{Counts, StoreRead, StoredEdge, StoredFile, StoredRoot, StoredUnresolved};
 pub use schema::SCHEMA_VERSION;
 
-/// The per-repository SQLite index (spec §9). Reads come from `StoreRead`; writes happen on a
+/// The per-repository SQLite index. Reads come from `StoreRead`; writes happen on a
 /// `Tx` inside `Store::transaction`.
 #[derive(Debug)]
 pub struct Store {

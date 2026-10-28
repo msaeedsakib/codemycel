@@ -15,7 +15,7 @@ pub struct Span {
 }
 
 /// A reference site: 1-based line, 0-based character column. Serialises as `[line, col]`, the
-/// form stored in `edges.occurrences` (spec §6.3).
+/// form stored in `edges.occurrences`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(from = "(u32, u32)", into = "(u32, u32)")]
 pub struct Occurrence {
