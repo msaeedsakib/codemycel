@@ -197,18 +197,19 @@ impl Pipeline {
         let mut staged = Staged::new(repo_root, config, registry, sources.progress)?;
         let changes = ChangeSet::between(&store.files()?, &staged.files);
         let full = mode == SyncMode::Full || needs_full(store, &staged, config, sources)?;
-        let changed = changes.paths();
         let (scope, plan) = if full {
-            (Scope::everything(&staged, changed), None)
+            (Scope::everything(&staged), None)
         } else {
             let plan = plan(store, &staged, &changes, sources)?;
             let scope = Scope {
                 files: plan.reverify.clone(),
                 implementer_sources: plan.implementer_sources.clone(),
-                changed,
             };
             (scope, Some(plan))
         };
+        if !changes.is_empty() {
+            sources.servers.files_changed(repo_root, &changes.paths());
+        }
         let verified = verify_phase::run(&staged, repo_root, config, registry, sources, &scope)?;
         for file in &mut staged.files {
             file.scip_covered = verified.scip_covered.contains(&file.path);

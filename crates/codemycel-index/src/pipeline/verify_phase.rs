@@ -39,17 +39,14 @@ pub struct Scope {
     pub files: BTreeSet<RepoPath>,
     /// Files whose traits and interfaces are asked for implementers; a superset of `files`.
     pub implementer_sources: BTreeSet<RepoPath>,
-    /// Files added, modified, or deleted since the last sync.
-    pub changed: Vec<RepoPath>,
 }
 
 impl Scope {
-    pub fn everything(staged: &Staged, changed: Vec<RepoPath>) -> Self {
+    pub fn everything(staged: &Staged) -> Self {
         let files: BTreeSet<RepoPath> = staged.code_files().into_iter().collect();
         Self {
             implementer_sources: files.clone(),
             files,
-            changed,
         }
     }
 
@@ -239,7 +236,6 @@ pub fn run(
                     view,
                     files: &lsp_files,
                     others: &others,
-                    changed: &scope.changed,
                 }),
                 _ => RootOutcome::degraded(view, &lsp_files, DegradeReason::NoServer, None),
             };
