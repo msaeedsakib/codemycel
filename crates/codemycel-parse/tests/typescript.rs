@@ -113,6 +113,67 @@ fn shadowed_local_is_not_a_candidate() {
     );
 }
 
+fn sites(parsed: &ParsedFile) -> Vec<String> {
+    parsed
+        .candidates
+        .iter()
+        .map(|c| format!("{}:{} {} {}", c.at.line, c.at.col, c.role, c.text))
+        .collect()
+}
+
+#[test]
+fn assignment_targets_bind_nothing() {
+    let parsed = parse(
+        "a.ts",
+        "let a = 1, b = 2;\nvar cur;\nexport function swap(o) {\n  [a, b] = [b, a];\n  ({ cur } = o);\n  for (a of o) {}\n  for ([b] of o) {}\n  return a + b + cur;\n}\n",
+    );
+    assert_eq!(
+        sites(&parsed),
+        [
+            "4:12 value b",
+            "4:15 value a",
+            "8:9 value a",
+            "8:13 value b",
+            "8:17 value cur",
+        ]
+    );
+}
+
+#[test]
+fn declarations_bind_at_every_depth() {
+    let parsed = parse(
+        "a.js",
+        "function f([x, { y: [z = d] }], { p, q: { r = e } }, ...[s]) {\n  try {} catch ({ message: [m] }) { m; }\n  for (const { k: [v] } of x) { v; }\n  return x + z + p + r + s + m + v;\n}\n",
+    );
+    assert_eq!(
+        sites(&parsed),
+        [
+            "1:25 value d",
+            "1:46 value e",
+            "4:29 value m",
+            "4:33 value v"
+        ]
+    );
+}
+
+#[test]
+fn block_bindings_stay_out_of_sibling_branches() {
+    let parsed = parse(
+        "a.ts",
+        "function f(c: boolean) {\n  if (c) { const open = 1; open; } else { open(2); }\n  try { const shut = 1; shut; } catch (e) { shut(3); e; } finally { shut(4); e; }\n  if (c) { const a = 1; } else if (c) { const a = 2; a; } else { a(5); }\n}\n",
+    );
+    assert_eq!(
+        sites(&parsed),
+        [
+            "2:42 call open",
+            "3:44 call shut",
+            "3:68 call shut",
+            "3:77 value e",
+            "4:65 call a",
+        ]
+    );
+}
+
 #[test]
 fn import_specifiers_yield_import_candidates() {
     let parsed = parse(

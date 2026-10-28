@@ -36,3 +36,13 @@
 (catch_clause parameter: (identifier) @local.definition)
 
 (for_in_statement kind: _ left: (identifier) @local.definition)
+
+(assignment_expression left: [(array_pattern) (object_pattern)] @local.scope)
+
+(for_in_statement !kind left: [(array_pattern) (object_pattern)] @local.scope)
+
+(if_statement alternative: (else_clause) @local.exclude)
+
+(catch_clause) @local.exclude
+
+(finally_clause) @local.exclude
