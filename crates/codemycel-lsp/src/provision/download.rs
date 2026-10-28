@@ -78,25 +78,48 @@ fn fetch(url: &str, dest: &Path) -> Result<String, String> {
         .collect())
 }
 
-/// `.tgz`/`.tar.gz` and `.zip` archives yield `member`; a `.gz` is the binary itself.
+/// `.tgz`/`.tar.gz` and `.zip` archives yield `member` as `dest`, and every other file under the
+/// member's directory beside it, keeping their relative paths, since a binary may need the
+/// files shipped next to it. A `.gz` is the binary itself.
 fn extract(archive: &Path, url: &str, member: Option<&str>, dest: &Path) -> io::Result<()> {
     let file = File::open(archive)?;
     let name = url.rsplit('/').next().unwrap_or(url);
+    let dir = dest.parent().unwrap_or(dest);
     if name.ends_with(".tgz") || name.ends_with(".tar.gz") {
         let member = member.ok_or_else(|| missing("a tar archive needs a member path"))?;
         let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+        let mut found = false;
         for entry in tar.entries()? {
             let mut entry = entry?;
-            if entry.path()?.as_ref() == Path::new(member) {
-                return copy_into(&mut entry, dest);
+            if !entry.header().entry_type().is_file() {
+                continue;
+            }
+            let path = entry.path()?.into_owned();
+            if let Some(target) = placement(&path, member, dest, dir) {
+                found |= target == dest;
+                copy_into(&mut entry, &target)?;
             }
         }
-        Err(missing(&format!("`{member}` is not in the archive")))
+        found
+            .then_some(())
+            .ok_or_else(|| missing(&format!("`{member}` is not in the archive")))
     } else if name.ends_with(".zip") {
         let member = member.ok_or_else(|| missing("a zip archive needs a member path"))?;
         let mut zip = zip::ZipArchive::new(file).map_err(io::Error::other)?;
-        let mut entry = zip.by_name(member).map_err(io::Error::other)?;
-        copy_into(&mut entry, dest)
+        zip.by_name(member).map_err(io::Error::other)?;
+        for index in 0..zip.len() {
+            let mut entry = zip.by_index(index).map_err(io::Error::other)?;
+            if !entry.is_file() {
+                continue;
+            }
+            let Some(path) = entry.enclosed_name() else {
+                continue;
+            };
+            if let Some(target) = placement(&path, member, dest, dir) {
+                copy_into(&mut entry, &target)?;
+            }
+        }
+        Ok(())
     } else if name.ends_with(".gz") {
         copy_into(&mut flate2::read::GzDecoder::new(file), dest)
     } else {
@@ -106,7 +129,24 @@ fn extract(archive: &Path, url: &str, member: Option<&str>, dest: &Path) -> io::
     }
 }
 
+/// Where an archive entry goes: `dest` for the member, `dir/<relative path>` for a file under
+/// the member's directory, nowhere for anything else or a path that climbs out.
+fn placement(path: &Path, member: &str, dest: &Path, dir: &Path) -> Option<PathBuf> {
+    let member = Path::new(member);
+    if path == member {
+        return Some(dest.to_owned());
+    }
+    let relative = path.strip_prefix(member.parent()?).ok()?;
+    let safe = relative
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    (safe && relative.components().next().is_some()).then(|| dir.join(relative))
+}
+
 fn copy_into(reader: &mut impl Read, dest: &Path) -> io::Result<()> {
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let mut out = File::create(dest)?;
     io::copy(reader, &mut out)?;
     out.flush()

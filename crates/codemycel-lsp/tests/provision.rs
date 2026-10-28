@@ -247,12 +247,17 @@ fn archive_extraction_handles_tgz_gz_zip() {
     let tgz = {
         let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
         let mut tar = tar::Builder::new(encoder);
-        let mut header = tar::Header::new_gnu();
-        header.set_size(VALID.len() as u64);
-        header.set_mode(0o755);
-        header.set_cksum();
-        tar.append_data(&mut header, "package/lib/server", VALID)
-            .unwrap();
+        for (path, bytes) in [
+            ("package/README.md", &b"readme"[..]),
+            ("package/lib/server", VALID),
+            ("package/lib/lib.d.ts", &b"declare const x: 1;"[..]),
+        ] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            tar.append_data(&mut header, path, bytes).unwrap();
+        }
         tar.into_inner().unwrap().finish().unwrap()
     };
     let zip = {
@@ -286,6 +291,22 @@ fn archive_extraction_handles_tgz_gz_zip() {
             "{name}"
         );
         assert_eq!(std::fs::read(&located.path).unwrap(), VALID, "{name}");
+        let mut cached: Vec<String> = std::fs::read_dir(cache::version_dir(&home, &adapter))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        cached.sort();
+        let binary = cache::binary_file_name(&adapter);
+        let expected: Vec<&str> = match name {
+            "server.tgz" => vec![binary.as_str(), "lib.d.ts"],
+            _ => vec![binary.as_str()],
+        };
+        let mut expected: Vec<String> = expected.into_iter().map(ToOwned::to_owned).collect();
+        expected.sort();
+        assert_eq!(
+            cached, expected,
+            "{name}: the member's siblings come along, nothing else"
+        );
     }
 }
 
