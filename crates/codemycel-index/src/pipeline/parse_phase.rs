@@ -8,9 +8,11 @@ use rayon::prelude::*;
 
 use crate::{IndexError, Registry, RootDetector};
 
-/// One parsed code file: its index in the walk, its file node, and what the adapter extracted.
+/// One parsed code file: its index in the walk, its text, its file node, and what the adapter
+/// extracted.
 pub struct ParsedCode {
     pub file: usize,
+    pub text: String,
     pub file_node: Node,
     pub parsed: ParsedFile,
 }
@@ -53,6 +55,7 @@ pub fn run(
                 file: index,
                 file_node: file_node(file, &bytes)?,
                 parsed: adapter.parse(&file.path, &bytes)?,
+                text: String::from_utf8_lossy(&bytes).into_owned(),
             })
         })
         .collect::<Result<Vec<_>, IndexError>>()?;

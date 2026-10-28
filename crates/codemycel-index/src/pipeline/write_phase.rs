@@ -7,9 +7,8 @@ use codemycel_core::{FileRecord, Node, Root, SearchDoc, Unresolved, UnresolvedRe
 use super::parse_phase::ParsedCode;
 use crate::IndexError;
 
-/// Writes roots, files, file and symbol nodes, impl records, structural edges, search docs, name
-/// counts, and candidates, in that order. Until a resolver runs, every candidate is stored as
-/// `server_unavailable`.
+/// Writes roots, files, file and symbol nodes, impl records, structural edges, search docs, and
+/// name counts, in that order. Candidates are written by the verify phase, or by `placeholders`.
 pub fn run(
     tx: &mut Tx<'_>,
     files: &[FileRecord],
@@ -52,6 +51,11 @@ pub fn run(
             tx.name_counts_add(name, 1)?;
         }
     }
+    Ok(())
+}
+
+/// Stores every candidate as `server_unavailable`, for a run in which no resolver runs.
+pub fn placeholders(tx: &mut Tx<'_>, parsed: &[ParsedCode]) -> Result<(), IndexError> {
     for code in parsed {
         let rows: Vec<Unresolved> = code
             .parsed

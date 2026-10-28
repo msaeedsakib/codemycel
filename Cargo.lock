@@ -277,6 +277,7 @@ dependencies = [
  "codemycel-scip",
  "ignore",
  "rayon",
+ "serde_json",
  "similar",
  "tempfile",
  "thiserror",
