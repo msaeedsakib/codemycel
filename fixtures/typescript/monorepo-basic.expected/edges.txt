@@ -69,8 +69,8 @@ packages/core/src/shapes.ts::Circle (class)	contains	packages/core/src/shapes.ts
 packages/core/src/shapes.ts::Circle (class)	contains	packages/core/src/shapes.ts::Circle::constructor (method)	0
 packages/core/src/shapes.ts::Circle (class)	contains	packages/core/src/shapes.ts::Circle::name (field)	0
 packages/core/src/shapes.ts::Circle (class)	extends	packages/core/src/shapes.ts::Base (class)	1
-packages/core/src/shapes.ts::Circle (class)	implements	packages/core/src/shapes.ts::Shape (interface)	2
-packages/core/src/shapes.ts::Circle::area (method)	overrides	packages/core/src/shapes.ts::Shape::area (method)	1
+packages/core/src/shapes.ts::Circle (class)	implements	packages/core/src/shapes.ts::Shape (interface)	1
+packages/core/src/shapes.ts::Circle::area (method)	overrides	packages/core/src/shapes.ts::Shape::area (method)	0
 packages/core/src/shapes.ts::Kind (enum)	contains	packages/core/src/shapes.ts::Kind::Circle (enum_member)	0
 packages/core/src/shapes.ts::Kind (enum)	contains	packages/core/src/shapes.ts::Kind::Square (enum_member)	0
 packages/core/src/shapes.ts::Shape (interface)	contains	packages/core/src/shapes.ts::Shape::area (method)	0
@@ -80,8 +80,8 @@ packages/core/src/shapes.ts::Square (class)	contains	packages/core/src/shapes.ts
 packages/core/src/shapes.ts::Square (class)	contains	packages/core/src/shapes.ts::Square::name (field)	0
 packages/core/src/shapes.ts::Square (class)	contains	packages/core/src/shapes.ts::Square::side (field)	0
 packages/core/src/shapes.ts::Square (class)	extends	packages/core/src/shapes.ts::Base (class)	1
-packages/core/src/shapes.ts::Square (class)	implements	packages/core/src/shapes.ts::Shape (interface)	2
-packages/core/src/shapes.ts::Square::area (method)	overrides	packages/core/src/shapes.ts::Shape::area (method)	1
+packages/core/src/shapes.ts::Square (class)	implements	packages/core/src/shapes.ts::Shape (interface)	1
+packages/core/src/shapes.ts::Square::area (method)	overrides	packages/core/src/shapes.ts::Shape::area (method)	0
 packages/scripts/Banner.jsx (file)	contains	packages/scripts/Banner.jsx::Banner (function)	0
 packages/scripts/Banner.jsx (file)	contains	packages/scripts/Banner.jsx::Footer (function)	0
 packages/scripts/Banner.jsx (file)	imports	packages/scripts/build.js (file)	1

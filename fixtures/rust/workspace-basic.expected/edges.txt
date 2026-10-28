@@ -32,9 +32,9 @@ crates/cli/src/memory.rs (file)	contains	crates/cli/src/memory.rs::<MemoryStore 
 crates/cli/src/memory.rs (file)	contains	crates/cli/src/memory.rs::MemoryStore (struct)	0
 crates/cli/src/memory.rs (file)	imports	crates/core/src/store.rs (file)	1
 crates/cli/src/memory.rs (file)	references	crates/cli/src/memory.rs::MemoryStore (struct)	1
-crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	overrides	crates/core/src/store.rs::Store::load (method)	1
+crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	overrides	crates/core/src/store.rs::Store::load (method)	0
 crates/cli/src/memory.rs::MemoryStore (struct)	contains	crates/cli/src/memory.rs::MemoryStore::entries (field)	0
-crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	1
+crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	0
 crates/core/Cargo.toml (package)	contains	crates/core/src/circle.rs (file)	0
 crates/core/Cargo.toml (package)	contains	crates/core/src/geometry.rs (file)	0
 crates/core/Cargo.toml (package)	contains	crates/core/src/lib.rs (file)	0
@@ -61,8 +61,8 @@ crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Shape (
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::sides (function)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::tests (module)	0
 crates/core/src/geometry.rs (file)	references	crates/core/src/geometry.rs::Circle (struct)	3
-crates/core/src/geometry.rs::<Circle as Area>::area (method)	overrides	crates/core/src/geometry.rs::Area::area (method)	1
-crates/core/src/geometry.rs::<Circle as Area>::name (method)	overrides	crates/core/src/geometry.rs::Area::name (method)	1
+crates/core/src/geometry.rs::<Circle as Area>::area (method)	overrides	crates/core/src/geometry.rs::Area::area (method)	0
+crates/core/src/geometry.rs::<Circle as Area>::name (method)	overrides	crates/core/src/geometry.rs::Area::name (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::area (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::describe (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::name (method)	0
@@ -72,7 +72,7 @@ crates/core/src/geometry.rs::Bits (struct)	contains	crates/core/src/geometry.rs:
 crates/core/src/geometry.rs::Bits (struct)	contains	crates/core/src/geometry.rs::Bits::int (field)	0
 crates/core/src/geometry.rs::Circle (struct)	contains	crates/core/src/geometry.rs::Circle::center (field)	0
 crates/core/src/geometry.rs::Circle (struct)	contains	crates/core/src/geometry.rs::Circle::radius (field)	0
-crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	1
+crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	0
 crates/core/src/geometry.rs::Circle::center (field)	references	crates/core/src/geometry.rs::Point (struct)	1
 crates/core/src/geometry.rs::Point (struct)	contains	crates/core/src/geometry.rs::Point::x (field)	0
 crates/core/src/geometry.rs::Point (struct)	contains	crates/core/src/geometry.rs::Point::y (field)	0
@@ -118,7 +118,7 @@ crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::layout (mod
 crates/core/src/render.rs (file)	imports	crates/core/src/geometry.rs (file)	1
 crates/core/src/render.rs (file)	references	crates/core/src/geometry.rs::Area (trait)	1
 crates/core/src/render.rs::<T as Render>::render (method)	calls	crates/core/src/geometry.rs::Area::describe (method)	1
-crates/core/src/render.rs::<T as Render>::render (method)	overrides	crates/core/src/render.rs::Render::render (method)	1
+crates/core/src/render.rs::<T as Render>::render (method)	overrides	crates/core/src/render.rs::Render::render (method)	0
 crates/core/src/render.rs::Canvas (struct)	contains	crates/core/src/render.rs::Canvas::width (field)	0
 crates/core/src/render.rs::Labelled (trait)	contains	crates/core/src/render.rs::Labelled::label (method)	0
 crates/core/src/render.rs::Labelled (trait)	extends	crates/core/src/geometry.rs::Area (trait)	1

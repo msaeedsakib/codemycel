@@ -496,6 +496,8 @@ impl<'a> Enricher<'a> {
     }
 
     /// `implements` and `overrides` edges for a trait or interface, or for one of its methods.
+    /// They carry no sites: the server answers with declarations, not references, and an
+    /// `implements` clause's site comes from its candidate.
     async fn implementations(
         &self,
         client: &LspClient,
@@ -512,22 +514,21 @@ impl<'a> Enricher<'a> {
         let locations = twice(|| client.implementation(uri, position, timeout)).await?;
         let mut edges = Vec::new();
         for location in locations {
-            let at = self.occurrence(&location);
             match self.mapper.locate(&location.uri, location.range) {
                 Target::Node(found) => match method {
                     None if is_implementer(found.kind) => {
-                        edges.push(lsp_edge(found, parent.node_ref(), EdgeKind::Implements, at));
+                        edges.push(lsp_edge(found, parent.node_ref(), EdgeKind::Implements));
                     }
                     Some(method)
                         if found.kind == NodeKind::Method && found != method.node_ref() =>
                     {
-                        edges.push(lsp_edge(found, method.node_ref(), EdgeKind::Overrides, at));
+                        edges.push(lsp_edge(found, method.node_ref(), EdgeKind::Overrides));
                     }
                     _ => {}
                 },
                 Target::ImplHeader { file, index } => {
                     edges.extend(
-                        self.impl_block_edges(client, &file, index, view, parent, method, at)
+                        self.impl_block_edges(client, &file, index, view, parent, method)
                             .await?,
                     );
                 }
@@ -540,7 +541,6 @@ impl<'a> Enricher<'a> {
     /// Converts an `implementation` result that landed on an impl header: the self type's
     /// definition is the implementer, and the block's methods override the parent's methods of
     /// the same name.
-    #[allow(clippy::too_many_arguments)]
     async fn impl_block_edges(
         &self,
         client: &LspClient,
@@ -549,7 +549,6 @@ impl<'a> Enricher<'a> {
         parent_view: &FileView,
         parent: &Node,
         method: Option<&Node>,
-        at: Option<Occurrence>,
     ) -> Result<Vec<Edge>, Failure> {
         let Some(block_view) = self.view.file(file) else {
             return Ok(Vec::new());
@@ -570,11 +569,6 @@ impl<'a> Enricher<'a> {
                     .is_some_and(|s| record.body.start <= s.start && s.end <= record.body.end)
             })
             .collect();
-        let site = |node: &Node| {
-            node.selection
-                .and_then(|s| block_view.index.position(s.start))
-                .and_then(|p| block_view.index.from_lsp(p))
-        };
         let mut edges = Vec::new();
         let parent_methods: Vec<NodeRef> = match method {
             Some(method) => vec![method.node_ref()],
@@ -583,7 +577,6 @@ impl<'a> Enricher<'a> {
                     implementer,
                     parent.node_ref(),
                     EdgeKind::Implements,
-                    at,
                 ));
                 parent_view
                     .members(&parent.node_ref())
@@ -600,17 +593,11 @@ impl<'a> Enricher<'a> {
                         block_method.node_ref(),
                         parent_method.clone(),
                         EdgeKind::Overrides,
-                        site(block_method),
                     ));
                 }
             }
         }
         Ok(edges)
-    }
-
-    fn occurrence(&self, location: &Location) -> Option<Occurrence> {
-        let file = self.mapper.repo_path(&location.uri).ok()?;
-        self.view.file(&file)?.index.from_lsp(location.range.start)
     }
 
     fn uri(&self, file: &RepoPath) -> Result<Uri, ClientError> {
@@ -735,13 +722,13 @@ where
     }
 }
 
-fn lsp_edge(src: NodeRef, dst: NodeRef, kind: EdgeKind, at: Option<Occurrence>) -> Edge {
+fn lsp_edge(src: NodeRef, dst: NodeRef, kind: EdgeKind) -> Edge {
     Edge {
         src,
         dst,
         kind,
         verified_by: VerifiedBy::Lsp,
-        occurrences: at.into_iter().collect(),
+        occurrences: Vec::new(),
     }
 }
 
