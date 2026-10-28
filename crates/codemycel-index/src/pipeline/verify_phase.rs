@@ -4,8 +4,8 @@ use std::path::Path;
 use codemycel_core::config::Config;
 use codemycel_core::store::Tx;
 use codemycel_core::{
-    Coverage, DegradeReason, Edge, EdgeKind, NodeKind, RepoPath, Resolver, Root, RootStatus,
-    ServerInfo, Unresolved, UnresolvedReason, Verdict, VerifiedBy,
+    Coverage, DegradeReason, Edge, EdgeKind, NodeKind, RepoPath, Resolver, ResolverSource, Root,
+    RootStatus, ServerInfo, SourceFile, Unresolved, UnresolvedReason, Verdict, VerifiedBy,
 };
 use codemycel_lsp::{EnrichOptions, FileView, IndexView, LspResolver, Provisioner, ServerLaunch};
 
@@ -16,8 +16,9 @@ use crate::{IndexError, Registry};
 /// The verified sources a full run consults.
 pub struct Sources<'a> {
     pub provisioner: &'a Provisioner,
-    /// An imported SCIP index; without one every file goes to its root's server.
-    pub scip: Option<&'a dyn Resolver>,
+    /// An imported SCIP index, bound to the parsed files once they exist; without one every
+    /// file goes to its root's server.
+    pub scip: Option<&'a dyn ResolverSource>,
     pub options: EnrichOptions,
 }
 
@@ -57,7 +58,21 @@ pub fn run(
             per_root.entry(root).or_default().push(path.clone());
         }
     }
-    let scip_covered: BTreeSet<RepoPath> = match sources.scip {
+    let source_files: Vec<SourceFile<'_>> = per_root
+        .values()
+        .flatten()
+        .filter_map(|path| {
+            let file = view.file(path)?;
+            Some(SourceFile {
+                path,
+                text: file.index.text(),
+                nodes: &file.nodes,
+            })
+        })
+        .collect();
+    let bound = sources.scip.map(|source| source.bind(&source_files));
+    let scip = bound.as_deref();
+    let scip_covered: BTreeSet<RepoPath> = match scip {
         Some(scip) => per_root
             .values()
             .flatten()
@@ -78,7 +93,7 @@ pub fn run(
         }
     }
     let mut verified = Verified::default();
-    if let Some(scip) = sources.scip {
+    if let Some(scip) = scip {
         let mut edges = Vec::new();
         for file in &scip_covered {
             if let Some(file) = view.file(file) {

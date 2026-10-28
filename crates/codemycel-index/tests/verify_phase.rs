@@ -8,7 +8,8 @@ use codemycel_core::config::Config;
 use codemycel_core::store::{Store, StoreRead};
 use codemycel_core::{
     Candidate, Coverage, DegradeReason, EdgeKind, Language, NodeKind, NodeRef, Occurrence,
-    RepoPath, Resolver, SemanticPath, Toolchain, UnresolvedReason, Verdict, VerifiedBy,
+    RepoPath, Resolver, ResolverSource, SemanticPath, SourceFile, Toolchain, UnresolvedReason,
+    Verdict, VerifiedBy,
 };
 use codemycel_index::{Pipeline, PipelineReport, Registry, Sources};
 use codemycel_lsp::{EnrichOptions, Provisioner};
@@ -72,6 +73,12 @@ impl Resolver for StubScip {
     }
 }
 
+impl ResolverSource for StubScip {
+    fn bind<'a>(&'a self, _: &'a [SourceFile<'a>]) -> Box<dyn Resolver + 'a> {
+        Box::new(self)
+    }
+}
+
 fn node(path: &str, kind: NodeKind) -> NodeRef {
     NodeRef::new(path.parse::<SemanticPath>().unwrap(), kind)
 }
@@ -94,7 +101,7 @@ fn run(
     repo: &Repo,
     adapter: FakeAdapter,
     provisioner: Provisioner,
-    scip: Option<&dyn Resolver>,
+    scip: Option<&dyn ResolverSource>,
 ) -> Run {
     let db = tempfile::tempdir().unwrap();
     let mut store = Store::create(&db.path().join("index.db")).unwrap();

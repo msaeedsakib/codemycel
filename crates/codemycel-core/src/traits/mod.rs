@@ -5,7 +5,7 @@ mod server_adapter;
 
 pub use language_adapter::{AdapterError, LanguageAdapter};
 pub use ranker::{Ranker, ScoredHit, SearchHit};
-pub use resolver::Resolver;
+pub use resolver::{Resolver, ResolverSource, SourceFile};
 pub use server_adapter::{Arch, Os, ReadinessStrategy, ServerAdapter, Toolchain};
 
 #[cfg(test)]
