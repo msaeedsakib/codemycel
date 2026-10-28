@@ -37,11 +37,11 @@ impl QueryEngine<'_> {
             .filter(|(r, _)| reason.is_none_or(|wanted| wanted == *r))
             .map(|(r, count)| Line::field(r.as_str(), count))
             .collect();
+        let mut sections = Vec::new();
         if reasons.is_empty() {
             let filter = reason.map_or(String::new(), |r| format!(" with reason {r}"));
             let line = Line::text(format!("no unresolved candidates{filter}"));
-            let section = Section::new("result", 0, vec![line]).without_header();
-            return self.finish(Outcome::Ok, vec![section], budget, "");
+            sections.push(Section::new("result", 0, vec![line]).without_header());
         }
         let labels: BTreeMap<_, _> = store
             .roots()?
@@ -71,11 +71,11 @@ impl QueryEngine<'_> {
             .into_iter()
             .map(|(path, count)| Line::field(path.as_str(), count))
             .collect();
-        let sections = vec![
+        sections.extend([
             Section::new("reasons", 0, reasons),
             Section::new("roots", 1, roots),
             Section::limited("files", 2, files, TOP_FILES),
-        ];
+        ]);
         self.finish(
             Outcome::Ok,
             sections,
@@ -111,16 +111,16 @@ impl QueryEngine<'_> {
             .filter(|row| reason.is_none_or(|wanted| wanted == row.unresolved.reason))
             .map(candidate_line)
             .collect();
+        let mut sections = Vec::new();
         if lines.is_empty() {
             let filter = reason.map_or(String::new(), |r| format!(" with reason {r}"));
             let line = Line::text(format!("no unresolved candidates{filter} in `{scope}`"));
-            let section = Section::new("result", 0, vec![line]).without_header();
-            return self.finish(Outcome::Ok, vec![section], budget, "");
+            sections.push(Section::new("result", 0, vec![line]).without_header());
         }
-        let section = Section::new("unresolved", 0, lines);
+        sections.push(Section::new("unresolved", 0, lines));
         self.finish(
             Outcome::Ok,
-            vec![section],
+            sections,
             budget,
             "raise max_tokens or filter by reason",
         )

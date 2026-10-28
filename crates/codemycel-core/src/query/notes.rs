@@ -28,17 +28,17 @@ impl QueryEngine<'_> {
             notes.retain(|note| note.orphaned);
         }
         let lines: Vec<Line> = notes.iter().map(|n| Line::Note(NoteLine::of(n))).collect();
+        let mut sections = Vec::new();
         if lines.is_empty() {
             let what = if orphans { "orphaned notes" } else { "notes" };
             let on = target.map_or(String::new(), |t| format!(" on `{t}`"));
-            let section = Section::new("result", 0, vec![Line::text(format!("no {what}{on}"))])
-                .without_header();
-            return self.finish(Outcome::Ok, vec![section], budget, "");
+            let line = Line::text(format!("no {what}{on}"));
+            sections.push(Section::new("result", 0, vec![line]).without_header());
         }
-        let section = Section::new("notes", 0, lines);
+        sections.push(Section::new("notes", 0, lines));
         self.finish(
             Outcome::Ok,
-            vec![section],
+            sections,
             budget,
             "raise max_tokens or pass a target",
         )
