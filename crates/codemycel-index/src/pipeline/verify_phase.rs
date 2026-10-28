@@ -278,7 +278,8 @@ fn enrich_root(
 }
 
 /// `implements` edges for every trait and interface of `file`, and `overrides` edges for their
-/// methods, as `resolver` reports them.
+/// methods, as `resolver` reports them. Only structs, enums, classes and type aliases implement,
+/// and only methods override.
 fn implementer_edges(
     resolver: &dyn Resolver,
     file: &FileView,
@@ -298,17 +299,28 @@ fn implementer_edges(
         }
         let parent = node.node_ref();
         for implementer in resolver.implementers(&parent) {
-            edges.push(edge(implementer, parent.clone(), EdgeKind::Implements));
+            if is_implementer(implementer.kind) {
+                edges.push(edge(implementer, parent.clone(), EdgeKind::Implements));
+            }
         }
         for method in file.members(&parent) {
             if method.kind == NodeKind::Method {
                 for overrider in resolver.implementers(method) {
-                    edges.push(edge(overrider, method.clone(), EdgeKind::Overrides));
+                    if overrider.kind == NodeKind::Method {
+                        edges.push(edge(overrider, method.clone(), EdgeKind::Overrides));
+                    }
                 }
             }
         }
     }
     edges
+}
+
+fn is_implementer(kind: NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::Struct | NodeKind::Enum | NodeKind::Class | NodeKind::TypeAlias
+    )
 }
 
 /// Candidates through `resolve`, then `outgoing_calls` for functions and methods.

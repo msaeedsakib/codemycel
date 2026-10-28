@@ -224,6 +224,45 @@ fn edge_discovered_from_other_side_is_written_only_by_owner() {
 }
 
 #[test]
+fn scip_implementers_are_kept_only_for_implementing_kinds() {
+    let repo = Repo::new(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "mod b;\n\npub struct S;\n\npub trait U {\n    fn go(&self);\n}\n",
+        ),
+        ("src/b.rs", B),
+    ]);
+    let trait_t = node("src/b.rs::T", NodeKind::Trait);
+    let t_go = node("src/b.rs::T::go", NodeKind::Method);
+    let struct_s = node("src/lib.rs::S", NodeKind::Struct);
+    let trait_u = node("src/lib.rs::U", NodeKind::Trait);
+    let u_go = node("src/lib.rs::U::go", NodeKind::Method);
+    let helper = node("src/b.rs::helper", NodeKind::Function);
+    let mut scip = StubScip::default();
+    for file in ["src/lib.rs", "src/b.rs"] {
+        scip.covers.insert(RepoPath::new(file).unwrap());
+    }
+    scip.implementers
+        .insert(trait_t.clone(), vec![struct_s.clone(), trait_u.clone()]);
+    scip.implementers
+        .insert(t_go.clone(), vec![u_go.clone(), helper.clone()]);
+    let adapter = FakeAdapter::new(&repo.scenario(json!([])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), Some(&scip));
+    assert_eq!(
+        edges_between(&run, &struct_s, EdgeKind::Implements, &trait_t),
+        [VerifiedBy::Scip]
+    );
+    assert!(edges_between(&run, &trait_u, EdgeKind::Implements, &trait_t).is_empty());
+    assert_eq!(
+        edges_between(&run, &u_go, EdgeKind::Overrides, &t_go),
+        [VerifiedBy::Scip]
+    );
+    assert!(edges_between(&run, &helper, EdgeKind::Overrides, &t_go).is_empty());
+}
+
+#[test]
 fn definition_in_unparsed_file_is_unindexed_file() {
     let repo = Repo::new(&[
         ("crate/Cargo.toml", MANIFEST),
