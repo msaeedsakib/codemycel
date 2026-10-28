@@ -25,6 +25,10 @@
 
 (namespace_import (identifier) @cand.import)
 
+(import_statement
+  .
+  source: (string (string_fragment) @cand.import))
+
 (variable_declarator
   name: [
     (identifier) @cand.import
@@ -37,3 +41,11 @@
 (export_specifier name: (identifier) @cand.export)
 
 (export_statement value: (identifier) @cand.export)
+
+(export_statement
+  "*"
+  source: (string (string_fragment) @cand.export))
+
+(export_statement
+  (namespace_export)
+  source: (string (string_fragment) @cand.export))

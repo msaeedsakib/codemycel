@@ -151,6 +151,28 @@ fn import_specifiers_yield_import_candidates() {
 }
 
 #[test]
+fn identifierless_module_forms_yield_specifier_candidates() {
+    for path in ["a.ts", "a.js"] {
+        let parsed = parse(
+            path,
+            "import \"./polyfill\";\nexport * from \"./math\";\nexport * as shapes from \"./shapes\";\nexport { a } from \"./a\";\nimport { b } from \"./b\";\nimport * as c from \"./c\";\n",
+        );
+        assert_eq!(
+            candidates(&parsed),
+            [
+                format!("1:8 import ./polyfill in {path} (file)"),
+                format!("2:15 export ./math in {path} (file)"),
+                format!("3:25 export ./shapes in {path} (file)"),
+                format!("4:9 export a in {path} (file)"),
+                format!("5:9 import b in {path} (file)"),
+                format!("6:12 import c in {path} (file)"),
+            ],
+            "{path}"
+        );
+    }
+}
+
+#[test]
 fn external_paths_are_outside_node_modules_and_ignored_declarations() {
     let repo = tempfile::tempdir().unwrap();
     let root = repo.path().canonicalize().unwrap();
