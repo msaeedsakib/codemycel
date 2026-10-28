@@ -129,7 +129,7 @@ pub fn run(
         } else {
             let server = |root: &Root| registry.server_for(root.language).map(|s| s.name());
             let scip_covered = &scip_covered;
-            let others: Vec<&FileView> = per_root
+            let others: Vec<RepoPath> = per_root
                 .iter()
                 .filter(|(other, _)| server(other).is_some() && server(other) == server(root))
                 .flat_map(|(other, files)| {
@@ -137,7 +137,7 @@ pub fn run(
                         .iter()
                         .filter(move |file| *other != root || scip_covered.contains(*file))
                 })
-                .filter_map(|file| view.file(file))
+                .cloned()
                 .collect();
             let lsp = enrich_root(
                 repo_root, config, root, &lsp_files, &others, &view, registry, sources,
@@ -201,7 +201,7 @@ fn enrich_root(
     config: &Config,
     root: &Root,
     files: &[RepoPath],
-    others: &[&FileView],
+    others: &[RepoPath],
     view: &IndexView,
     registry: &Registry,
     sources: &Sources<'_>,
@@ -260,10 +260,11 @@ fn enrich_root(
         Err(reason) => return degraded(reason, Some(info)),
     };
     let mut report = resolver.enrich_files(files);
-    for file in others {
-        report
-            .edges
-            .extend(implementer_edges(&resolver, file, VerifiedBy::Lsp));
+    if report.degraded.is_none() {
+        let found = resolver.enrich_implementers(others);
+        report.degraded = found.degraded;
+        report.edges.extend(found.edges);
+        report.partially_enriched.extend(found.partially_enriched);
     }
     resolver.shutdown();
     if let Some(reason) = report.degraded {
@@ -323,33 +324,37 @@ fn implementer_edges(
 /// type that implements, and `overrides` from each method in the block to the trait's method of
 /// the same name.
 fn impl_block_edges(view: &IndexView, file: &FileView, verdicts: &[Verdict]) -> Vec<Edge> {
-    let confirmed: Vec<(&Candidate, u32, &NodeRef)> = file
+    let placed: Vec<(&Candidate, u32, Option<&NodeRef>)> = file
         .candidates
         .iter()
         .zip(verdicts)
-        .filter_map(|(candidate, verdict)| match verdict {
-            Verdict::Confirmed { target } => {
-                let position = file.index.to_lsp(candidate.at)?;
-                Some((candidate, file.index.offset(position)?, target))
-            }
-            Verdict::Unresolved { .. } => None,
+        .filter_map(|(candidate, verdict)| {
+            let position = file.index.to_lsp(candidate.at)?;
+            let target = match verdict {
+                Verdict::Confirmed { target } => Some(target),
+                Verdict::Unresolved { .. } => None,
+            };
+            Some((candidate, file.index.offset(position)?, target))
         })
         .collect();
     let inside = |range: ByteRange, at: u32| range.start <= at && at < range.end;
     let mut edges = Vec::new();
     for record in &file.impl_records {
-        let clause = confirmed.iter().find(|(candidate, at, _)| {
-            candidate.role == CandidateRole::Implements
+        let clause = placed.iter().find_map(|(candidate, at, target)| {
+            let is_clause = candidate.role == CandidateRole::Implements
                 && !is_implementer(candidate.enclosing.kind)
-                && inside(record.header, *at)
+                && inside(record.header, *at);
+            is_clause.then_some((*candidate, (*target)?))
         });
-        let Some((clause, _, parent)) = clause else {
+        let Some((clause, parent)) = clause else {
             continue;
         };
-        let self_type = confirmed
+        let self_type = placed
             .iter()
-            .find(|(_, at, _)| inside(record.self_type_selection, *at));
-        if let Some((_, _, implementer)) = self_type
+            .filter(|(_, at, _)| inside(record.self_type_selection, *at))
+            .min_by_key(|(_, at, _)| *at)
+            .and_then(|(_, _, target)| *target);
+        if let Some(implementer) = self_type
             && is_implementer(implementer.kind)
         {
             edges.push(Edge {
