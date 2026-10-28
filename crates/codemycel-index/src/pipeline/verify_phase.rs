@@ -140,14 +140,7 @@ pub fn run(
                 .filter_map(|file| view.file(file))
                 .collect();
             let lsp = enrich_root(
-                repo_root,
-                config,
-                root,
-                &lsp_files,
-                &others,
-                &view,
-                registry,
-                sources,
+                repo_root, config, root, &lsp_files, &others, &view, registry, sources,
             );
             let coverage = match (lsp.degraded.is_none(), has_scip) {
                 (true, true) => Coverage::ScipAndLsp,
@@ -386,7 +379,10 @@ fn impl_block_edges(view: &IndexView, file: &FileView, verdicts: &[Verdict]) -> 
                     .is_some_and(|s| record.body.start <= s.start && s.end <= record.body.end)
         });
         for method in block_methods {
-            for parent_method in parent_methods.iter().filter(|m| m.path.name() == method.name) {
+            for parent_method in parent_methods
+                .iter()
+                .filter(|m| m.path.name() == method.name)
+            {
                 edges.push(Edge {
                     src: method.node_ref(),
                     dst: (*parent_method).clone(),

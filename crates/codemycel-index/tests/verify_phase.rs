@@ -226,9 +226,15 @@ fn edge_discovered_from_other_side_is_written_only_by_owner() {
 #[test]
 fn implementer_in_another_root_is_written_by_its_own_root() {
     let repo = Repo::new(&[
-        ("a/Cargo.toml", "[package]\nname = \"a\"\nversion = \"0.1.0\"\n"),
+        (
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\n",
+        ),
         ("a/src/lib.rs", "pub trait T {\n    fn go(&self);\n}\n"),
-        ("b/Cargo.toml", "[package]\nname = \"b\"\nversion = \"0.1.0\"\n"),
+        (
+            "b/Cargo.toml",
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\n",
+        ),
         (
             "b/src/lib.rs",
             "pub struct S;\n\nimpl a::T for S {\n    fn go(&self) {}\n}\n",
