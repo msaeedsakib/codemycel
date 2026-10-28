@@ -22,6 +22,8 @@ codemycel-ui = { path = "crates/codemycel-ui" }
 anyhow = "1.0.104"
 blake3 = { version = "1.8.7", features = ["serde"] }
 clap = { version = "4.6.7", features = ["derive"] }
+ignore = "0.4.34"
+rayon = "1.12.0"
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
@@ -29,9 +31,15 @@ thiserror = "2.0.21"
 toml = "1.1.8"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+tree-sitter = "0.27.1"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-md = "0.5.4"
+tree-sitter-rust = "0.24.2"
+tree-sitter-typescript = "0.23.2"
 
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
+similar = "3.2.1"
 tempfile = "3.27.0"
 
 [workspace.lints.rust]
