@@ -130,6 +130,10 @@ impl LanguageAdapter for TypeScriptAdapter {
     fn external_path_predicate(&self, canonical_path: &Path, repo_root: &Path) -> bool {
         is_external(canonical_path, repo_root)
     }
+
+    fn project_files(&self, repo_root: &Path, files: &[RepoPath]) -> Vec<RepoPath> {
+        roots::project_files(repo_root, files)
+    }
 }
 
 impl LanguageAdapter for JavaScriptAdapter {
@@ -158,6 +162,10 @@ impl LanguageAdapter for JavaScriptAdapter {
 
     fn external_path_predicate(&self, canonical_path: &Path, repo_root: &Path) -> bool {
         is_external(canonical_path, repo_root)
+    }
+
+    fn project_files(&self, repo_root: &Path, files: &[RepoPath]) -> Vec<RepoPath> {
+        roots::project_files(repo_root, files)
     }
 }
 

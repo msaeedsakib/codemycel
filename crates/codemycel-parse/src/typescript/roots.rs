@@ -53,6 +53,67 @@ pub(super) fn detect(repo_root: &Path, files: &[RepoPath]) -> Roots {
     }
 }
 
+/// Every `package.json`, `tsconfig*.json`, and `jsconfig*.json`, and the configs they extend by
+/// relative path, followed through the chain.
+pub(super) fn project_files(repo_root: &Path, files: &[RepoPath]) -> Vec<RepoPath> {
+    let name = |file: &RepoPath| {
+        file.as_str()
+            .rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let is_config = |name: &str| {
+        (name.starts_with("tsconfig") || name.starts_with("jsconfig")) && name.ends_with(".json")
+    };
+    let mut found: BTreeSet<RepoPath> = files
+        .iter()
+        .filter(|file| name(file) == PACKAGE_JSON || is_config(&name(file)))
+        .cloned()
+        .collect();
+    let mut pending: Vec<RepoPath> = found
+        .iter()
+        .filter(|f| is_config(&name(f)))
+        .cloned()
+        .collect();
+    while let Some(config) = pending.pop() {
+        let Some(value) = read(repo_root, &config, true) else {
+            continue;
+        };
+        let extends = match value.get("extends") {
+            Some(Value::String(one)) => vec![one.as_str()],
+            Some(Value::Array(many)) => many.iter().filter_map(Value::as_str).collect(),
+            _ => Vec::new(),
+        };
+        for target in extends.into_iter().filter(|t| t.starts_with('.')) {
+            let resolved = resolve_relative(parent(&config), target);
+            let with_json = (!target.ends_with(".json"))
+                .then(|| resolve_relative(parent(&config), &format!("{target}.json")))
+                .flatten();
+            for path in resolved.into_iter().chain(with_json) {
+                if found.insert(path.clone()) {
+                    pending.push(path);
+                }
+            }
+        }
+    }
+    found.into_iter().collect()
+}
+
+fn resolve_relative(dir: &str, relative: &str) -> Option<RepoPath> {
+    let mut segments: Vec<&str> = dir.split('/').filter(|s| !s.is_empty()).collect();
+    for segment in relative.split(['/', '\\']) {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop()?;
+            }
+            other => segments.push(other),
+        }
+    }
+    RepoPath::new(&segments.join("/")).ok()
+}
+
 fn is_named(file: &RepoPath, name: &str) -> bool {
     file.as_str().rsplit('/').next() == Some(name)
 }
@@ -85,20 +146,11 @@ fn read(repo_root: &Path, file: &RepoPath, jsonc: bool) -> Option<Value> {
 /// A `references` entry names a directory holding a `tsconfig.json` or a config file itself,
 /// relative to the referencing config's directory.
 fn resolve_reference(dir: &str, reference: &str) -> Option<RepoPath> {
-    let mut segments: Vec<&str> = dir.split('/').filter(|s| !s.is_empty()).collect();
-    for segment in reference.split(['/', '\\']) {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                segments.pop()?;
-            }
-            other => segments.push(other),
-        }
+    let resolved = resolve_relative(dir, reference).filter(|path| !path.is_root())?;
+    if resolved.as_str().ends_with(".json") {
+        return Some(resolved);
     }
-    if !segments.last()?.ends_with(".json") {
-        segments.push(TSCONFIG);
-    }
-    RepoPath::new(&segments.join("/")).ok()
+    resolve_relative(resolved.as_str(), TSCONFIG)
 }
 
 /// JSONC to JSON: drops `//` and `/* */` comments and commas before `}` or `]`, leaving strings

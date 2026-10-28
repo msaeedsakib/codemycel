@@ -30,7 +30,7 @@ fn line_range(start: Option<u32>, end: Option<u32>) -> String {
 pub(super) fn nodes(conn: &Connection) -> Result<String> {
     sorted_lines(
         conn,
-        "SELECT semantic_path, kind, line_start, line_end FROM nodes",
+        "SELECT semantic_path, kind, line_start, line_end FROM nodes WHERE kind != 'community'",
         |row| {
             Ok(format!(
                 "{}\t{}\t{}",
@@ -47,7 +47,8 @@ pub(super) fn edges(conn: &Connection) -> Result<String> {
         conn,
         "SELECT s.semantic_path, s.kind, e.kind, d.semantic_path, d.kind,
                 json_array_length(e.occurrences)
-         FROM edges e JOIN nodes s ON s.id = e.src JOIN nodes d ON d.id = e.dst",
+         FROM edges e JOIN nodes s ON s.id = e.src JOIN nodes d ON d.id = e.dst
+         WHERE e.kind != 'member_of'",
         |row| {
             Ok(format!(
                 "{} ({})\t{}\t{} ({})\t{}",

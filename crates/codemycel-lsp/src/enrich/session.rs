@@ -4,12 +4,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use codemycel_core::config::ServerConfig;
-use codemycel_core::{DegradeReason, ReadinessStrategy, ServerAdapter};
-use lsp_types::{Position, Uri};
+use codemycel_core::{DegradeReason, ReadinessStrategy, RepoPath, ServerAdapter};
+use lsp_types::{FileChangeType, Position, Uri};
 use serde_json::Value;
 use tokio::sync::watch;
 
-use crate::client::{LspClient, uri_to_path};
+use super::absolute;
+use crate::client::{ClientError, LspClient, path_to_uri, uri_to_path};
 
 /// How long `initialize` may take before the start counts as failed.
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -78,6 +79,32 @@ impl<'a> Session<'a> {
 
     pub fn client(&self) -> Option<Arc<LspClient>> {
         self.client.lock().ok().map(|client| client.clone())
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.client().is_some_and(|client| client.is_alive())
+    }
+
+    /// `workspace/didChangeWatchedFiles` for repository files under `repo_root`: deleted when
+    /// gone from disk, changed otherwise.
+    pub fn files_changed(&self, repo_root: &Path, files: &[RepoPath]) -> Result<(), ClientError> {
+        let client = self.client().ok_or(ClientError::Closed)?;
+        let changes: Vec<(Uri, FileChangeType)> = files
+            .iter()
+            .filter_map(|file| {
+                let path = absolute(repo_root, file);
+                let kind = if path.exists() {
+                    FileChangeType::CHANGED
+                } else {
+                    FileChangeType::DELETED
+                };
+                Some((path_to_uri(&path).ok()?, kind))
+            })
+            .collect();
+        if changes.is_empty() {
+            return Ok(());
+        }
+        client.did_change_watched_files(&changes)
     }
 
     /// Replaces a dead server with a fresh one and waits for it again.
@@ -196,8 +223,8 @@ async fn spawn(
             while let Some(notification) = notifications.recv().await {
                 match notification.method.as_str() {
                     "experimental/serverStatus" => {
-                        if notification.params["quiescent"] == Value::Bool(true) {
-                            let _ = quiescent_tx.send(true);
+                        if let Some(quiescent) = notification.params["quiescent"].as_bool() {
+                            let _ = quiescent_tx.send(quiescent);
                         }
                     }
                     "textDocument/publishDiagnostics" => {

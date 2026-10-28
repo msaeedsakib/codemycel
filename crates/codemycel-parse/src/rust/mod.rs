@@ -88,6 +88,28 @@ impl LanguageAdapter for RustAdapter {
             &with_canonical(homes.into_iter().flatten()),
         )
     }
+
+    /// Cargo manifests, toolchain files, Cargo configs, and build scripts. `Cargo.lock` is left
+    /// out: rust-analyzer rewrites it itself whenever it loads a changed manifest.
+    fn project_files(&self, _repo_root: &Path, files: &[RepoPath]) -> Vec<RepoPath> {
+        const NAMES: [&str; 4] = [
+            "Cargo.toml",
+            "rust-toolchain",
+            "rust-toolchain.toml",
+            "build.rs",
+        ];
+        files
+            .iter()
+            .filter(|file| {
+                let path = file.as_str();
+                let (dir, name) = path.rsplit_once('/').unwrap_or(("", path));
+                let cargo_config = (dir == ".cargo" || dir.ends_with("/.cargo"))
+                    && matches!(name, "config" | "config.toml");
+                NAMES.contains(&name) || cargo_config
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 fn with_canonical(paths: impl Iterator<Item = PathBuf>) -> Vec<PathBuf> {

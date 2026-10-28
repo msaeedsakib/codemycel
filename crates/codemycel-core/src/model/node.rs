@@ -37,6 +37,7 @@ pub struct Node {
     pub selection: Option<ByteRange>,
     pub signature: Option<String>,
     pub has_explicit_return_type: bool,
+    /// For a file node, a hash of its import and export statements, `None` without any.
     pub body_hash: Option<blake3::Hash>,
     pub doc_comment: Option<String>,
     /// As the language spells it (`pub`, `pub(crate)`, `export`); `None` when private.
