@@ -6,6 +6,7 @@ use super::ConfigError;
 pub const HOME_ENV: &str = "CODEMYCEL_HOME";
 pub const REPO_DIR_NAME: &str = ".codemycel";
 pub const CONFIG_FILE_NAME: &str = "config.toml";
+pub const NOTES_DIR_NAME: &str = "notes";
 
 /// The codemycel home: `CODEMYCEL_HOME` if set, else `<user home>/.codemycel`.
 pub fn home_dir() -> Result<PathBuf, ConfigError> {
@@ -27,6 +28,10 @@ pub fn home_dir_with(
 
 pub fn repo_config_path(repo_root: &Path) -> PathBuf {
     repo_root.join(REPO_DIR_NAME).join(CONFIG_FILE_NAME)
+}
+
+pub fn notes_dir(repo_root: &Path) -> PathBuf {
+    repo_root.join(REPO_DIR_NAME).join(NOTES_DIR_NAME)
 }
 
 pub fn home_config_path(home: &Path) -> PathBuf {

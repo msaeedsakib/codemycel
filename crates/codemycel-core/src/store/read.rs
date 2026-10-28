@@ -8,9 +8,10 @@ use super::dump;
 use super::error::Result;
 use super::sql::{hash_at, json_at, occurrences_at};
 use crate::{
-    ByteRange, Candidate, Coverage, Edge, EdgeKind, FileId, FileRecord, ImplRecord, Node, NodeId,
-    NodeKind, NodeRef, Occurrence, RepoPath, Root, RootId, RootStatus, SearchHit, SemanticPath,
-    ServerInfo, Span, StoredNode, Unresolved, UnresolvedReason,
+    ByteRange, Candidate, Community, Coverage, Edge, EdgeKind, FileId, FileRecord, ImplRecord,
+    Node, NodeId, NodeKind, NodeRef, Note, NoteId, Occurrence, RepoPath, Root, RootId, RootStatus,
+    SearchHit, SemanticPath, ServerInfo, Span, StoredNode, Unresolved, UnresolvedReason,
+    VerifiedBy,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,6 +42,15 @@ pub struct StoredUnresolved {
     pub unresolved: Unresolved,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredNote {
+    pub node_id: NodeId,
+    pub note: Note,
+    /// The node the note annotates; `None` while it is orphaned.
+    pub target: Option<NodeRef>,
+    pub orphaned: bool,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Counts {
     pub nodes: u64,
@@ -61,6 +71,10 @@ const FILE_SELECT: &str = "SELECT id, path, root_id, hash, size, language, kind,
 const EDGE_SELECT: &str = "SELECT e.src, e.dst, s.semantic_path, s.kind, d.semantic_path,
         d.kind, e.kind, e.verified_by, e.root_id, e.occurrences
     FROM edges e JOIN nodes s ON s.id = e.src JOIN nodes d ON d.id = e.dst";
+
+const NOTE_SELECT: &str = "SELECT n.node_id, n.uuid, n.target_semantic_path, n.kind, n.body,
+        n.created, n.updated, t.semantic_path, t.kind, n.orphaned
+    FROM notes n LEFT JOIN nodes t ON t.id = n.target_node_id";
 
 const UNRESOLVED_SELECT: &str = "SELECT u.node_id, f.path, n.semantic_path, n.kind, u.text,
         u.role, u.line, u.col, u.reason
@@ -179,6 +193,50 @@ pub trait StoreRead {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Every node of one of `kinds`, by semantic path and kind.
+    fn nodes_of_kinds(&self, kinds: &[NodeKind]) -> Result<Vec<StoredNode>> {
+        let placeholders: Vec<String> = (1..=kinds.len()).map(|i| format!("?{i}")).collect();
+        let sql = format!(
+            "{NODE_SELECT} WHERE n.kind IN ({}) ORDER BY n.semantic_path, n.kind",
+            placeholders.join(", ")
+        );
+        let mut stmt = self.conn().prepare_cached(&sql)?;
+        let rows = stmt.query_map(params_from_iter(kinds), stored_node)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Every edge of one of `kinds` verified by one of `verified_by`, sorted by source, target,
+    /// and kind.
+    fn edges_of_kinds(
+        &self,
+        kinds: &[EdgeKind],
+        verified_by: &[VerifiedBy],
+    ) -> Result<Vec<StoredEdge>> {
+        let list = |from: usize, len: usize| {
+            (from..from + len)
+                .map(|i| format!("?{i}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let sql = format!(
+            "{EDGE_SELECT} WHERE e.kind IN ({}) AND e.verified_by IN ({})
+             ORDER BY s.semantic_path, s.kind, d.semantic_path, d.kind, e.kind",
+            list(1, kinds.len()),
+            list(kinds.len() + 1, verified_by.len())
+        );
+        let values = kinds
+            .iter()
+            .map(|k| Value::Text(k.as_str().to_owned()))
+            .chain(
+                verified_by
+                    .iter()
+                    .map(|v| Value::Text(v.as_str().to_owned())),
+            );
+        let mut stmt = self.conn().prepare_cached(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), stored_edge)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Outgoing edges of `node`; an empty `kinds` means every kind.
     fn edges_from(&self, node: NodeId, kinds: &[EdgeKind]) -> Result<Vec<StoredEdge>> {
         edges_where(self.conn(), "e.src", node, kinds, "d.semantic_path, d.kind")
@@ -228,6 +286,64 @@ pub trait StoreRead {
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Files holding an unresolved candidate whose text is `text`, sorted.
+    fn files_with_unresolved_text(&self, text: &str) -> Result<Vec<RepoPath>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT DISTINCT f.path FROM unresolved u JOIN files f ON f.id = u.file_id
+             WHERE u.text = ?1 ORDER BY f.path",
+        )?;
+        let rows = stmt.query_map([text], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Every community with its members sorted, by stable id.
+    fn communities(&self) -> Result<Vec<Community>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT c.node_id, c.stable_id, c.label, c.label_source FROM communities c
+             ORDER BY c.stable_id",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    NodeId(row.get(0)?),
+                    Community {
+                        stable_id: row.get(1)?,
+                        label: row.get(2)?,
+                        label_source: row.get(3)?,
+                        members: Vec::new(),
+                    },
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut communities = Vec::with_capacity(rows.len());
+        for (id, mut community) in rows {
+            community.members = self
+                .edges_to(id, &[EdgeKind::MemberOf])?
+                .into_iter()
+                .map(|stored| stored.edge.src)
+                .collect();
+            communities.push(community);
+        }
+        Ok(communities)
+    }
+
+    /// Every note, by uuid.
+    fn notes(&self) -> Result<Vec<StoredNote>> {
+        let sql = format!("{NOTE_SELECT} ORDER BY n.uuid");
+        let mut stmt = self.conn().prepare_cached(&sql)?;
+        let rows = stmt.query_map([], stored_note)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    fn note_by_uuid(&self, uuid: &NoteId) -> Result<Option<StoredNote>> {
+        let sql = format!("{NOTE_SELECT} WHERE n.uuid = ?1");
+        Ok(self
+            .conn()
+            .prepare_cached(&sql)?
+            .query_row([&uuid.0], stored_note)
+            .optional()?)
     }
 
     fn name_count(&self, name: &str) -> Result<u32> {
@@ -288,15 +404,34 @@ pub trait StoreRead {
         Ok(counts)
     }
 
-    /// `<semantic path>\t<kind>\t<line_start>-<line_end>` per node, sorted.
+    /// `<semantic path>\t<kind>\t<line_start>-<line_end>` per node other than communities,
+    /// sorted.
     fn dump_nodes(&self) -> Result<String> {
         dump::nodes(self.conn())
     }
 
     /// `<src path> (<src kind>)\t<edge kind>\t<dst path> (<dst kind>)\t<occurrence count>` per
-    /// edge, sorted.
+    /// edge other than `member_of`, sorted.
     fn dump_edges(&self) -> Result<String> {
         dump::edges(self.conn())
+    }
+
+    /// `<stable id>\t<label>\t<member semantic paths, sorted, comma-separated>` per community,
+    /// sorted by id.
+    fn dump_communities(&self) -> Result<String> {
+        let mut out = String::new();
+        for community in self.communities()? {
+            let mut members: Vec<&str> =
+                community.members.iter().map(|m| m.path.as_str()).collect();
+            members.sort_unstable();
+            out.push_str(&format!(
+                "{}\t{}\t{}\n",
+                community.stable_id,
+                community.label,
+                members.join(",")
+            ));
+        }
+        Ok(out)
     }
 
     /// `<file>:<line>:<col>\t<role>\t<text>\t<reason>` per candidate, sorted.
@@ -346,21 +481,23 @@ fn edges_where(
     }
     sql.push_str(&format!(" ORDER BY e.kind, {order}"));
     let mut stmt = conn.prepare_cached(&sql)?;
-    let rows = stmt.query_map(params_from_iter(values), |row| {
-        Ok(StoredEdge {
-            src_id: NodeId(row.get(0)?),
-            dst_id: NodeId(row.get(1)?),
-            root_id: row.get::<_, Option<i64>>(8)?.map(RootId),
-            edge: Edge {
-                src: NodeRef::new(row.get(2)?, row.get(3)?),
-                dst: NodeRef::new(row.get(4)?, row.get(5)?),
-                kind: row.get(6)?,
-                verified_by: row.get(7)?,
-                occurrences: occurrences_at(row, 9)?,
-            },
-        })
-    })?;
+    let rows = stmt.query_map(params_from_iter(values), stored_edge)?;
     Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
+fn stored_edge(row: &Row<'_>) -> rusqlite::Result<StoredEdge> {
+    Ok(StoredEdge {
+        src_id: NodeId(row.get(0)?),
+        dst_id: NodeId(row.get(1)?),
+        root_id: row.get::<_, Option<i64>>(8)?.map(RootId),
+        edge: Edge {
+            src: NodeRef::new(row.get(2)?, row.get(3)?),
+            dst: NodeRef::new(row.get(4)?, row.get(5)?),
+            kind: row.get(6)?,
+            verified_by: row.get(7)?,
+            occurrences: occurrences_at(row, 9)?,
+        },
+    })
 }
 
 fn stored_node(row: &Row<'_>) -> rusqlite::Result<StoredNode> {
@@ -444,6 +581,26 @@ fn stored_unresolved(row: &Row<'_>) -> rusqlite::Result<StoredUnresolved> {
             },
             reason: row.get(8)?,
         },
+    })
+}
+
+fn stored_note(row: &Row<'_>) -> rusqlite::Result<StoredNote> {
+    let target = match (row.get::<_, Option<SemanticPath>>(7)?, row.get(8)?) {
+        (Some(path), Some(kind)) => Some(NodeRef::new(path, kind)),
+        _ => None,
+    };
+    Ok(StoredNote {
+        node_id: NodeId(row.get(0)?),
+        note: Note {
+            uuid: NoteId(row.get(1)?),
+            target_semantic_path: row.get(2)?,
+            kind: row.get(3)?,
+            body: row.get(4)?,
+            created: row.get(5)?,
+            updated: row.get(6)?,
+        },
+        target,
+        orphaned: row.get(9)?,
     })
 }
 

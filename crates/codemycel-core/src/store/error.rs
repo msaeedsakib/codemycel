@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use thiserror::Error;
 
-use crate::{NodeRef, RepoPath};
+use crate::{ModelError, NodeRef, NoteId, RepoPath};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -20,6 +20,10 @@ pub enum StoreError {
     UnknownFile(RepoPath),
     #[error("no node for {0}")]
     UnknownNode(NodeRef),
+    #[error("no note with uuid {}", .0.0)]
+    UnknownNote(NoteId),
+    #[error(transparent)]
+    Model(#[from] ModelError),
     #[error("value out of range: {0}")]
     OutOfRange(&'static str),
 }

@@ -1,5 +1,5 @@
 /// Bumped whenever the DDL or any stored text format changes; a mismatch on open means rebuild.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 pub(crate) const DDL: &str = r#"
 CREATE TABLE meta (
@@ -104,6 +104,7 @@ CREATE TABLE unresolved (
 );
 CREATE INDEX unresolved_file ON unresolved (file_id);
 CREATE INDEX unresolved_node ON unresolved (node_id);
+CREATE INDEX unresolved_text ON unresolved (text);
 
 CREATE TABLE communities (
     node_id INTEGER PRIMARY KEY REFERENCES nodes (id) ON DELETE CASCADE,

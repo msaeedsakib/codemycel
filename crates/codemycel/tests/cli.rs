@@ -21,8 +21,6 @@ fn cli_version_prints_semver() {
 #[test]
 fn every_subcommand_exists_and_reports_not_implemented() {
     let invocations: &[&[&str]] = &[
-        &["init"],
-        &["sync"],
         &["mcp"],
         &["ui"],
         &["setup"],
@@ -189,7 +187,7 @@ fn status_reads_counts_from_created_store() {
         .arg(repo.path())
         .assert()
         .code(0)
-        .stdout("schema_version: 2\nnodes: 1\nedges: 0\nunresolved: 0\n");
+        .stdout("schema_version: 3\nnodes: 1\nedges: 0\nunresolved: 0\n");
 }
 
 #[test]

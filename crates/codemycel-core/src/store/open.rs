@@ -4,7 +4,7 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 use super::error::Result;
 use super::schema::{DDL, SCHEMA_VERSION};
-use super::{Store, StoreError};
+use super::{Store, StoreError, meta};
 
 impl Store {
     /// Creates a new database at `db_path`; an error if the file already exists.
@@ -17,8 +17,13 @@ impl Store {
         let tx = conn.transaction()?;
         tx.execute_batch(DDL)?;
         tx.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', ?1), ('codemycel_version', ?2)",
-            params![SCHEMA_VERSION.to_string(), env!("CARGO_PKG_VERSION")],
+            "INSERT INTO meta (key, value) VALUES (?1, ?2), (?3, ?4)",
+            params![
+                meta::SCHEMA_VERSION,
+                SCHEMA_VERSION.to_string(),
+                meta::CODEMYCEL_VERSION,
+                env!("CARGO_PKG_VERSION")
+            ],
         )?;
         tx.commit()?;
         Ok(Self { conn, commits: 0 })
