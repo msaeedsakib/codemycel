@@ -7,6 +7,7 @@ use codemycel_core::{
 
 use crate::ScipIndex;
 use crate::mapping::FileLines;
+use crate::reader::package;
 
 /// A SCIP index bound to the parsed files, answering for the files it covers. Reference
 /// occurrences resolve candidates at the same position; a candidate with no occurrence is
@@ -50,10 +51,21 @@ impl ScipResolver<'_> {
         }
     }
 
-    /// The node defining `symbol`; a symbol the index never defines is external.
+    /// The node defining `symbol`. A symbol the index never defines is `unmapped` when it shares
+    /// a package with a symbol the index does define, and external otherwise.
     fn definition_of(&self, symbol: &str) -> Verdict {
+        let Some(definitions) = self.index.definitions.get(symbol) else {
+            let local = package(symbol).is_some_and(|p| self.index.packages.contains(p));
+            return Verdict::Unresolved {
+                reason: if local {
+                    UnresolvedReason::Unmapped
+                } else {
+                    UnresolvedReason::ExternalDependency
+                },
+            };
+        };
         let mut reason = UnresolvedReason::ExternalDependency;
-        for (path, range) in self.index.definitions.get(symbol).into_iter().flatten() {
+        for (path, range) in definitions {
             let Some(file) = self.files.get(path) else {
                 reason = UnresolvedReason::UnindexedFile;
                 continue;
