@@ -1,0 +1,68 @@
+crates/cli/Cargo.toml	package	-
+crates/cli/src/main.rs	file	1-28
+crates/cli/src/main.rs::config	function	6-8
+crates/cli/src/main.rs::main	function	19-28
+crates/cli/src/main.rs::memory	module	1-1
+crates/cli/src/main.rs::shadowed	function	10-13
+crates/cli/src/main.rs::uses_global	function	15-17
+crates/cli/src/memory.rs	file	1-16
+crates/cli/src/memory.rs::<MemoryStore as Store>::load	method	13-15
+crates/cli/src/memory.rs::MemoryStore	struct	7-9
+crates/cli/src/memory.rs::MemoryStore::entries	field	8-8
+crates/core/Cargo.toml	package	-
+crates/core/src/circle.rs	file	1-12
+crates/core/src/circle.rs::Circle::new	method	4-6
+crates/core/src/circle.rs::Circle::scaled	method	8-11
+crates/core/src/geometry.rs	file	1-60
+crates/core/src/geometry.rs::<Circle as Area>::area	method	45-47
+crates/core/src/geometry.rs::<Circle as Area>::name	method	49-51
+crates/core/src/geometry.rs::<Circle as fmt::Debug>::fmt	method	39-41
+crates/core/src/geometry.rs::<Circle as fmt::Display>::fmt	method	33-35
+crates/core/src/geometry.rs::Area	trait	22-30
+crates/core/src/geometry.rs::Area::area	method	23-23
+crates/core/src/geometry.rs::Area::describe	method	27-29
+crates/core/src/geometry.rs::Area::name	method	25-25
+crates/core/src/geometry.rs::Circle	struct	11-14
+crates/core/src/geometry.rs::Circle::center	field	12-12
+crates/core/src/geometry.rs::Circle::radius	field	13-13
+crates/core/src/geometry.rs::Point	struct	6-9
+crates/core/src/geometry.rs::Point::x	field	7-7
+crates/core/src/geometry.rs::Point::y	field	8-8
+crates/core/src/geometry.rs::Shape	enum	16-20
+crates/core/src/geometry.rs::Shape::Empty	enum_member	19-19
+crates/core/src/geometry.rs::Shape::Round	enum_member	17-17
+crates/core/src/geometry.rs::Shape::Square	enum_member	18-18
+crates/core/src/geometry.rs::Shape::Square::side	field	18-18
+crates/core/src/geometry.rs::sides	function	54-60
+crates/core/src/lib.rs	file	1-36
+crates/core/src/lib.rs::GREETING	constant	13-13
+crates/core/src/lib.rs::MAX_SHAPES	constant	11-11
+crates/core/src/lib.rs::Wrapper	struct	20-22
+crates/core/src/lib.rs::Wrapper::inner	field	21-21
+crates/core/src/lib.rs::Wrapper<T>::get	method	29-31
+crates/core/src/lib.rs::Wrapper<T>::new	method	25-27
+crates/core/src/lib.rs::circle	module	6-6
+crates/core/src/lib.rs::geometry	module	3-3
+crates/core/src/lib.rs::parse_all	function	34-36
+crates/core/src/lib.rs::render	module	4-4
+crates/core/src/lib.rs::store	module	5-5
+crates/core/src/lib.rs::total_area	function	16-18
+crates/core/src/render.rs	file	1-39
+crates/core/src/render.rs::<T as Render>::render	method	12-14
+crates/core/src/render.rs::Canvas	struct	17-19
+crates/core/src/render.rs::Canvas::width	field	18-18
+crates/core/src/render.rs::Labelled	trait	7-9
+crates/core/src/render.rs::Labelled::label	method	8-8
+crates/core/src/render.rs::Render	trait	3-5
+crates/core/src/render.rs::Render::render	method	4-4
+crates/core/src/render.rs::layout	module	21-39
+crates/core/src/render.rs::layout::<super::Canvas>::cells	method	35-37
+crates/core/src/render.rs::layout::grid	module	22-28
+crates/core/src/render.rs::layout::grid::COLUMNS	constant	23-23
+crates/core/src/render.rs::layout::grid::columns	function	25-27
+crates/core/src/render.rs::layout::total_columns	function	30-32
+crates/core/src/store.rs	file	1-10
+crates/core/src/store.rs::Store	trait	4-10
+crates/core/src/store.rs::Store::exists	method	7-9
+crates/core/src/store.rs::Store::load	method	5-5
+package:cargo:async-trait	package	-
