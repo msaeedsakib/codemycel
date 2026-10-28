@@ -1,4 +1,5 @@
 use codemycel_core::{Language, LanguageAdapter};
+use codemycel_parse::rust::RustAdapter;
 use codemycel_parse::typescript::{JavaScriptAdapter, TypeScriptAdapter};
 
 /// The language adapters, in the fixed order Rust, TypeScript, JavaScript.
@@ -9,6 +10,7 @@ pub struct Registry {
 impl Default for Registry {
     fn default() -> Self {
         Self::with_adapters(vec![
+            Box::new(RustAdapter::new()),
             Box::new(TypeScriptAdapter::new()),
             Box::new(JavaScriptAdapter::new()),
         ])
