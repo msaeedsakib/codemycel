@@ -33,4 +33,12 @@ pub trait LanguageAdapter: Send + Sync {
 
     /// Whether a canonicalised definition path lies outside the repository's own code.
     fn external_path_predicate(&self, canonical_path: &Path, repo_root: &Path) -> bool;
+
+    /// The paths among `files`, and the paths they name, whose edits can change how this
+    /// language's code resolves anywhere in the repository: manifests, lockfiles, and project
+    /// configs. `files` may hold paths that no longer exist; `repo_root` is where configs are
+    /// read.
+    fn project_files(&self, _repo_root: &Path, _files: &[RepoPath]) -> Vec<RepoPath> {
+        Vec::new()
+    }
 }

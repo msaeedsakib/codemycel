@@ -26,8 +26,8 @@ pub use pipeline::{
 pub use registry::Registry;
 pub use repo_registry::{RegistryEntry, RepoRegistry};
 pub use roots::RootDetector;
-pub use servers::{BatchServers, RootJob, RootOutcome, ServerPool, Servers};
+pub use servers::{BatchServers, RootJob, RootOutcome, ServerPool, Servers, SyncStart};
 pub use session::{SessionError, SessionLoop, SessionOptions, SessionState};
-pub use sync::{ChangeSet, ChangedSymbols, SymbolsDiff, SyncPlan};
+pub use sync::{ChangeSet, ChangedSymbols, ParsedFacts, SymbolsDiff, SyncPlan};
 pub use walk::Walker;
 pub use watch::{Watcher, WatcherHandle};

@@ -105,7 +105,7 @@ fn main() {
     let mut _child = None;
     while let Some(message) = read(&mut stdin) {
         if let Some(log) = log.as_mut() {
-            let _ = writeln!(log, "{message}");
+            let _ = log.write_all(format!("{message}\n").as_bytes());
         }
         let method = message["method"].as_str().unwrap_or_default().to_owned();
         let id = message.get("id").cloned();

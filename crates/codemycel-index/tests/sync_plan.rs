@@ -8,7 +8,7 @@ use codemycel_core::{
     Language, Node, NodeKind, Occurrence, RepoPath, Root, SemanticPath, Span, Unresolved,
     UnresolvedReason, VerifiedBy,
 };
-use codemycel_index::{ChangeSet, ChangedSymbols, SymbolsDiff, SyncPlan};
+use codemycel_index::{ChangeSet, ChangedSymbols, ParsedFacts, SymbolsDiff, SyncPlan};
 
 fn path(text: &str) -> RepoPath {
     RepoPath::new(text).unwrap()
@@ -122,36 +122,36 @@ fn plan(
     changes: &ChangeSet,
     symbols: BTreeMap<RepoPath, ChangedSymbols>,
 ) -> BTreeSet<String> {
-    build(store, changes, symbols, &BTreeMap::new())
+    build(store, changes, symbols, BTreeMap::new())
         .reverify
         .iter()
         .map(|f| f.as_str().to_owned())
         .collect()
 }
 
+/// Plans with every stored file but the deleted ones, and every added one, parsed now; `facts`
+/// gives what some of their new parses say.
 fn build(
     store: &Store,
     changes: &ChangeSet,
     symbols: BTreeMap<RepoPath, ChangedSymbols>,
-    supertypes: &BTreeMap<RepoPath, BTreeSet<String>>,
+    mut facts: BTreeMap<RepoPath, ParsedFacts>,
 ) -> SyncPlan {
-    let parsed: BTreeSet<RepoPath> = store
+    let parsed = store
         .files()
         .unwrap()
         .into_iter()
         .map(|f| f.record.path)
         .filter(|f| !changes.deleted.contains(f))
-        .chain(changes.added.iter().cloned())
-        .collect();
-    SyncPlan::build(
-        changes,
-        &symbols,
-        &BTreeSet::new(),
-        &parsed,
-        supertypes,
-        store,
-    )
-    .unwrap()
+        .chain(changes.added.iter().cloned());
+    for file in parsed {
+        facts.entry(file).or_default();
+    }
+    SyncPlan::build(changes, &symbols, &BTreeSet::new(), &facts, store).unwrap()
+}
+
+fn names_of(names: &[&str]) -> BTreeSet<String> {
+    names.iter().map(|name| (*name).to_owned()).collect()
 }
 
 fn diff_of(
@@ -415,12 +415,27 @@ fn new_implementer_asks_the_interface_file_for_implementers() {
     };
 
     let diff = diff_of(&store, "triangle.ts", &[triangle], &[]);
-    let supertypes = BTreeMap::from([(path("triangle.ts"), BTreeSet::from(["Shape".to_owned()]))]);
+    let facts = BTreeMap::from([
+        (
+            path("triangle.ts"),
+            ParsedFacts {
+                supertypes: names_of(&["Shape"]),
+                ..ParsedFacts::default()
+            },
+        ),
+        (
+            path("shapes.ts"),
+            ParsedFacts {
+                parents: names_of(&["Shape"]),
+                ..ParsedFacts::default()
+            },
+        ),
+    ]);
     let plan = build(
         &store,
         &changes,
         BTreeMap::from([(path("triangle.ts"), diff)]),
-        &supertypes,
+        facts,
     );
 
     assert_eq!(plan.reverify, [path("triangle.ts")].into());
@@ -428,6 +443,108 @@ fn new_implementer_asks_the_interface_file_for_implementers() {
         plan.implementer_sources,
         [path("shapes.ts"), path("triangle.ts")].into()
     );
+}
+
+#[test]
+fn new_implementer_asks_every_interface_up_the_hierarchy() {
+    let dir = tempfile::tempdir().unwrap();
+    let shape = symbol(
+        "shapes.ts",
+        "Shape",
+        NodeKind::Interface,
+        "interface Shape",
+        "",
+    );
+    let fancy = symbol(
+        "fancy.ts",
+        "Fancy",
+        NodeKind::Interface,
+        "interface Fancy",
+        "",
+    );
+    let store = store(
+        &dir,
+        &[shape.clone(), fancy.clone()],
+        &[edge(&fancy, &shape, EdgeKind::Extends)],
+    );
+    let lamp = symbol("lamp.ts", "Lamp", NodeKind::Class, "class Lamp", "");
+    let changes = ChangeSet {
+        added: [path("lamp.ts")].into(),
+        ..ChangeSet::default()
+    };
+    let facts = BTreeMap::from([
+        (
+            path("lamp.ts"),
+            ParsedFacts {
+                supertypes: names_of(&["Fancy"]),
+                ..ParsedFacts::default()
+            },
+        ),
+        (
+            path("fancy.ts"),
+            ParsedFacts {
+                parents: names_of(&["Fancy"]),
+                ..ParsedFacts::default()
+            },
+        ),
+    ]);
+
+    let diff = diff_of(&store, "lamp.ts", &[lamp], &[]);
+    let plan = build(
+        &store,
+        &changes,
+        BTreeMap::from([(path("lamp.ts"), diff)]),
+        facts,
+    );
+
+    assert_eq!(
+        plan.implementer_sources,
+        [path("fancy.ts"), path("lamp.ts"), path("shapes.ts")].into()
+    );
+}
+
+#[test]
+fn added_file_plans_files_whose_specifiers_name_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let extra = function("src/extra.ts", "extra");
+    let other = function("src/other.ts", "other");
+    let mut store = store(&dir, &[extra.clone(), other.clone()], &[]);
+    let specifier = |file: &str, enclosing: &Node, text: &str, role| Unresolved {
+        candidate: Candidate {
+            file: path(file),
+            enclosing: enclosing.node_ref(),
+            text: text.to_owned(),
+            role,
+            at: Occurrence { line: 1, col: 1 },
+        },
+        reason: UnresolvedReason::NoDefinition,
+    };
+    store
+        .transaction(|tx| {
+            tx.insert_unresolved(&[
+                specifier(
+                    "src/extra.ts",
+                    &extra,
+                    "../src/later.js",
+                    CandidateRole::Export,
+                ),
+                specifier("src/other.ts", &other, "./sooner", CandidateRole::Import),
+            ])
+        })
+        .unwrap();
+    let changes = ChangeSet {
+        added: [path("src/later.ts")].into(),
+        ..ChangeSet::default()
+    };
+
+    let diff = diff_of(&store, "src/later.ts", &[], &[]);
+    let planned = plan(
+        &store,
+        &changes,
+        BTreeMap::from([(path("src/later.ts"), diff)]),
+    );
+
+    assert_eq!(planned, names(&["src/extra.ts", "src/later.ts"]));
 }
 
 #[test]

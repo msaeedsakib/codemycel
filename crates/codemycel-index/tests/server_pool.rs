@@ -3,7 +3,7 @@
 mod fake;
 
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use codemycel_core::store::Store;
 use codemycel_core::{DegradeReason, Language};
@@ -166,18 +166,23 @@ fn server_without_a_job_in_a_sync_is_told_its_changes() {
     assert_eq!(root.path.as_str(), "a");
 
     let edited = repo.uri("a/src/lib.rs");
-    let notified = repo
-        .log()
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter(|m| m["method"] == "workspace/didChangeWatchedFiles")
-        .filter(|m| {
-            m["params"]["changes"]
-                .as_array()
-                .is_some_and(|changes| changes.iter().any(|c| c["uri"] == edited))
-        })
-        .count();
-    assert_eq!(notified, 2, "both running servers hear of the edit once");
+    let notified = || {
+        repo.log()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|m| m["method"] == "workspace/didChangeWatchedFiles")
+            .filter(|m| {
+                m["params"]["changes"]
+                    .as_array()
+                    .is_some_and(|changes| changes.iter().any(|c| c["uri"] == edited))
+            })
+            .count()
+    };
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while notified() < 2 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(notified(), 2, "both running servers hear of the edit once");
 }
 
 #[test]

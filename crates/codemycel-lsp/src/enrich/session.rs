@@ -223,8 +223,8 @@ async fn spawn(
             while let Some(notification) = notifications.recv().await {
                 match notification.method.as_str() {
                     "experimental/serverStatus" => {
-                        if notification.params["quiescent"] == Value::Bool(true) {
-                            let _ = quiescent_tx.send(true);
+                        if let Some(quiescent) = notification.params["quiescent"].as_bool() {
+                            let _ = quiescent_tx.send(quiescent);
                         }
                     }
                     "textDocument/publishDiagnostics" => {
