@@ -142,6 +142,24 @@ fn bindings_do_not_hide_their_own_initialisers() {
 }
 
 #[test]
+fn uppercase_pattern_identifiers_are_not_bindings() {
+    let parsed = parse(
+        "fn f(x: Option<u32>) -> Option<u32> {\n    match x {\n        None => None,\n        Some(MAX) => MAX,\n        Some(n) => n,\n    }\n}\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "1:8 type Option",
+            "1:24 type Option",
+            "3:16 value None",
+            "4:8 value Some",
+            "4:21 value MAX",
+            "5:8 value Some",
+        ]
+    );
+}
+
+#[test]
 fn generic_parameters_are_locals() {
     let parsed = parse("fn g<T: Bound, const N: usize>(t: T) -> [u8; N] {\n    [0; N]\n}\n");
     assert_eq!(candidates(&parsed), ["1:8 type Bound"]);
