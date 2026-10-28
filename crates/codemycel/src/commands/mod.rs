@@ -15,6 +15,9 @@ mod ui;
 mod unresolved;
 mod upgrade;
 
+use anyhow::Context as _;
+use codemycel_index::{RepoLocation, RepoLocator};
+
 use crate::cli::{Command, Context};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,6 +53,21 @@ pub fn dispatch(command: &Command, ctx: &Context) -> anyhow::Result<ExitCode> {
         Command::Note(args) => note::run(args, ctx),
         Command::Notes(args) => notes::run(args, ctx),
     }
+}
+
+/// The repository `--repo` or the current directory is in.
+fn locate(ctx: &Context) -> anyhow::Result<RepoLocation> {
+    let start = match &ctx.repo {
+        Some(path) => path.clone(),
+        None => std::env::current_dir().context("reading the current directory")?,
+    };
+    let start =
+        std::path::absolute(&start).with_context(|| format!("resolving {}", start.display()))?;
+    Ok(RepoLocator::locate(
+        &start,
+        std::env::home_dir().as_deref(),
+        codemycel_core::config::home_dir().ok().as_deref(),
+    ))
 }
 
 fn not_implemented(command: &str) -> anyhow::Result<ExitCode> {

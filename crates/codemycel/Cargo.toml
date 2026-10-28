@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 codemycel-core.workspace = true
 codemycel-index.workspace = true
+codemycel-lsp.workspace = true
 codemycel-mcp.workspace = true
 codemycel-ui.workspace = true
 

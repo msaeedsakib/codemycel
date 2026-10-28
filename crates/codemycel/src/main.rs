@@ -2,6 +2,7 @@
 
 mod cli;
 mod commands;
+mod progress;
 
 use clap::Parser;
 
