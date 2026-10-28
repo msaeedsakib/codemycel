@@ -56,7 +56,8 @@ pub fn parse(path: &RepoPath, bytes: &[u8]) -> Result<DocParse, AdapterError> {
     };
     let mut blocks = Vec::new();
     preorder(tree.block_tree().root_node(), &mut blocks);
-    let (headings, starts) = document.headings(&blocks).map_err(fail)?;
+    let definitions = document.definitions(&blocks);
+    let (headings, starts) = document.headings(&blocks, &definitions).map_err(fail)?;
     let contains = headings
         .iter()
         .map(|heading| Edge {
@@ -67,7 +68,9 @@ pub fn parse(path: &RepoPath, bytes: &[u8]) -> Result<DocParse, AdapterError> {
             occurrences: Vec::new(),
         })
         .collect();
-    let (mentions, links) = document.references(&blocks, &starts).map_err(fail)?;
+    let (mentions, links) = document
+        .references(&blocks, &starts, &definitions)
+        .map_err(fail)?;
     let lines = text.matches('\n').count() + usize::from(!text.is_empty() && !text.ends_with('\n'));
     Ok(DocParse {
         doc: Node {
@@ -100,6 +103,9 @@ pub fn parse(path: &RepoPath, bytes: &[u8]) -> Result<DocParse, AdapterError> {
 /// A heading's start byte and identity, for attributing the references below it.
 type HeadingStart = (usize, NodeRef);
 
+/// Link reference definitions: normalised label to destination node.
+type Definitions<'t> = HashMap<String, TsNode<'t>>;
+
 struct Document<'a> {
     path: &'a RepoPath,
     source: &'a str,
@@ -111,7 +117,11 @@ struct Document<'a> {
 impl Document<'_> {
     /// Heading nodes in document order, and their start bytes for attributing references. A
     /// heading's span runs to the next heading of the same or a higher level.
-    fn headings(&self, blocks: &[TsNode<'_>]) -> Result<(Vec<Node>, Vec<HeadingStart>), String> {
+    fn headings(
+        &self,
+        blocks: &[TsNode<'_>],
+        definitions: &Definitions<'_>,
+    ) -> Result<(Vec<Node>, Vec<HeadingStart>), String> {
         let mut found = Vec::new();
         for &block in blocks {
             let content = match block.kind() {
@@ -133,7 +143,7 @@ impl Document<'_> {
                 .iter()
                 .find(|(_, _, next)| *next <= level)
                 .map_or(self.source.len(), |(next, _, _)| next.start_byte());
-            let name = self.heading_text(content, block.kind() == "atx_heading");
+            let name = self.heading_text(content, block.kind() == "atx_heading", definitions);
             let slug = slugify(&name);
             if slug.is_empty() {
                 continue;
@@ -168,25 +178,45 @@ impl Document<'_> {
     }
 
     /// The heading's visible text: a link reduced to its text, an image's destination and title
-    /// dropped, an ATX closing sequence removed, whitespace trimmed.
-    fn heading_text(&self, content: TsNode<'_>, atx: bool) -> String {
+    /// dropped, an ATX closing sequence removed, whitespace trimmed. A reference whose label has
+    /// no definition is not a link and stays as written.
+    fn heading_text(
+        &self,
+        content: TsNode<'_>,
+        atx: bool,
+        definitions: &Definitions<'_>,
+    ) -> String {
+        let defined = |label: Option<TsNode<'_>>| {
+            label.is_some_and(|label| definitions.contains_key(&self.label_key(label)))
+        };
         let mut hidden = Vec::new();
         if let Some(inline) = self.tree.inline_tree(&content) {
             let mut nodes = Vec::new();
             preorder(inline.root_node(), &mut nodes);
             for node in nodes {
+                let is_link = match node.kind() {
+                    "inline_link" => true,
+                    "full_reference_link" => defined(child_of_kind(node, "link_label")),
+                    "collapsed_reference_link" | "shortcut_link" => {
+                        defined(child_of_kind(node, "link_text"))
+                    }
+                    _ => false,
+                };
                 match node.kind() {
-                    "inline_link"
-                    | "full_reference_link"
-                    | "collapsed_reference_link"
-                    | "shortcut_link" => match child_of_kind(node, "link_text") {
+                    _ if is_link => match child_of_kind(node, "link_text") {
                         Some(text) => {
                             hidden.push(node.start_byte()..text.start_byte());
                             hidden.push(text.end_byte()..node.end_byte());
                         }
                         None => hidden.push(node.byte_range()),
                     },
-                    "link_destination" | "link_title" => hidden.push(node.byte_range()),
+                    "image" => {
+                        for part in ["link_destination", "link_title"] {
+                            if let Some(child) = child_of_kind(node, part) {
+                                hidden.push(child.byte_range());
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -213,8 +243,8 @@ impl Document<'_> {
         &self,
         blocks: &[TsNode<'_>],
         starts: &[HeadingStart],
+        definitions: &Definitions<'_>,
     ) -> Result<(Vec<Reference>, Vec<Reference>), String> {
-        let definitions = self.definitions(blocks);
         let mut mentions = Vec::new();
         let mut links = Vec::new();
         for block in blocks
@@ -234,11 +264,11 @@ impl Document<'_> {
                         &mut links,
                     ),
                     "full_reference_link" => (
-                        self.reference_target(child_of_kind(node, "link_label"), &definitions),
+                        self.reference_target(child_of_kind(node, "link_label"), definitions),
                         &mut links,
                     ),
                     "collapsed_reference_link" | "shortcut_link" => (
-                        self.reference_target(child_of_kind(node, "link_text"), &definitions),
+                        self.reference_target(child_of_kind(node, "link_text"), definitions),
                         &mut links,
                     ),
                     _ => continue,
@@ -263,7 +293,7 @@ impl Document<'_> {
 
     /// Each link reference definition's destination by normalised label; the first definition of
     /// a label wins.
-    fn definitions<'t>(&self, blocks: &[TsNode<'t>]) -> HashMap<String, TsNode<'t>> {
+    fn definitions<'t>(&self, blocks: &[TsNode<'t>]) -> Definitions<'t> {
         let mut definitions = HashMap::new();
         for block in blocks
             .iter()
@@ -284,7 +314,7 @@ impl Document<'_> {
     fn reference_target(
         &self,
         label: Option<TsNode<'_>>,
-        definitions: &HashMap<String, TsNode<'_>>,
+        definitions: &Definitions<'_>,
     ) -> Option<String> {
         let destination = definitions.get(&self.label_key(label?))?;
         self.link_target(*destination)

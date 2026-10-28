@@ -53,7 +53,7 @@ fn headings_become_nodes_with_unique_slugs() {
 #[test]
 fn heading_links_keep_only_their_text() {
     let parsed = doc(
-        "# See [Guide][g] here\n\n## Also [Inline](x.md \"T\")\n\n## [Both][] and [short] ##\n\nSetext [Link](<a b.md>)\n---\n\n[g]: g.md\n[both]: b.md\n[short]: s.md\n",
+        "# See [Guide][g] here\n\n## Also [Inline](x.md \"T\")\n\n## [Both][] and [short] ##\n\nSetext [Link](<a b.md>)\n---\n\n## Install [beta] and [Foo][nope]\n\n[g]: g.md\n[both]: b.md\n[short]: s.md\n",
     );
     let headings: Vec<String> = parsed
         .headings
@@ -67,6 +67,7 @@ fn heading_links_keep_only_their_text() {
             "docs/guide.md#also-inline Also Inline",
             "docs/guide.md#both-and-short Both and short",
             "docs/guide.md#setext-link Setext Link",
+            "docs/guide.md#install-beta-and-foonope Install [beta] and [Foo][nope]",
         ]
     );
 }
