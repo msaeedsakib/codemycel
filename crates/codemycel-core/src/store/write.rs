@@ -6,8 +6,8 @@ use super::error::Result;
 use super::read::{file_key, node_key};
 use super::{StoreError, Tx};
 use crate::{
-    Edge, FileId, FileRecord, ImplRecord, Node, NodeId, Occurrence, RepoPath, Root, RootId,
-    SearchDoc, Unresolved,
+    Edge, FileId, FileRecord, ImplRecord, Node, NodeId, Occurrence, Package, RepoPath, Root,
+    RootId, SearchDoc, Unresolved,
 };
 
 impl Tx<'_> {
@@ -206,6 +206,29 @@ impl Tx<'_> {
                 record.body.end,
                 record.self_type_selection.start,
                 record.self_type_selection.end,
+            ])?;
+        }
+        Ok(())
+    }
+
+    /// One row per package node; the node must already be inserted.
+    pub fn insert_packages(&mut self, packages: &[Package]) -> Result<()> {
+        let mut insert = self.tx.prepare_cached(
+            "INSERT INTO packages (node_id, name, version, external, manifest_file_id)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )?;
+        for package in packages {
+            let node_id = node_key(&self.tx, &package.node)?;
+            let manifest = match &package.manifest {
+                Some(path) => Some(file_key(&self.tx, path)?.0.0),
+                None => None,
+            };
+            insert.execute(params![
+                node_id.0,
+                package.name,
+                package.version,
+                package.external,
+                manifest,
             ])?;
         }
         Ok(())
