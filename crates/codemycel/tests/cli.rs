@@ -19,37 +19,14 @@ fn cli_version_prints_semver() {
 }
 
 #[test]
-fn every_subcommand_exists_and_reports_not_implemented() {
-    let invocations: &[&[&str]] = &[
-        &["mcp"],
-        &["ui"],
-        &["setup"],
-        &["doctor"],
-        &["upgrade"],
-        &["search", "rate limiter"],
-        &["symbol", "Store::open"],
-        &["impact", "Store::open"],
-        &["trace", "main", "Store::open"],
-        &["overview"],
-        &["unresolved"],
-        &[
-            "note",
-            "repo",
-            "--body",
-            "a durable finding",
-            "--kind",
-            "label",
-        ],
-        &["notes"],
-    ];
-    for args in invocations {
-        cargo_bin_cmd!("codemycel")
-            .args(*args)
-            .assert()
-            .code(1)
-            .stdout("")
-            .stderr(not_implemented(args[0]));
-    }
+fn ui_reports_not_implemented() {
+    cargo_bin_cmd!("codemycel")
+        .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
+        .arg("ui")
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(not_implemented("ui"));
 }
 
 #[test]
