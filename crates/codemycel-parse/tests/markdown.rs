@@ -72,6 +72,35 @@ fn mention_strips_trailing_parens_and_leading_dot() {
 }
 
 #[test]
+fn table_cells_are_read_for_mentions_and_links() {
+    let parsed = doc("# Table\n\n| name | see |\n|---|---|\n| `Store` | [lib](lib.rs) |\n");
+    assert_eq!(
+        refs(&parsed.mentions),
+        ["5:2 Store from docs/guide.md#table"]
+    );
+    assert_eq!(
+        refs(&parsed.links),
+        ["5:12 docs/lib.rs from docs/guide.md#table"]
+    );
+}
+
+#[test]
+fn reference_links_resolve_through_their_definitions() {
+    let parsed = doc(
+        "# Refs\n\n[Full][Setup  Guide] [setup guide][] [Setup Guide] [web] [nowhere] ![img][setup guide]\n\n\
+         [setup\n guide]: <../setup.md#install> \"Setup\"\n[SETUP GUIDE]: ignored.md\n[web]: https://example.com\n",
+    );
+    assert_eq!(
+        refs(&parsed.links),
+        [
+            "3:0 setup.md from docs/guide.md#refs",
+            "3:21 setup.md from docs/guide.md#refs",
+            "3:37 setup.md from docs/guide.md#refs",
+        ]
+    );
+}
+
+#[test]
 fn relative_links_resolve_against_the_document() {
     let parsed = doc(
         "# Links\n\n[lib](../crate/src/lib.rs) [same](./other.md#part) [sp](<my file.rs>) \
