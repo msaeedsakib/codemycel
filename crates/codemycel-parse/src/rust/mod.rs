@@ -1,5 +1,3 @@
-//! The Rust language adapter (spec §7.1).
-
 mod hooks;
 mod roots;
 
@@ -69,7 +67,7 @@ impl LanguageAdapter for RustAdapter {
     }
 
     /// Under `CARGO_HOME` (default `~/.cargo`), `RUSTUP_HOME` (default `~/.rustup`), or a `target`
-    /// directory (spec §6.5).
+    /// directory.
     fn external_path_predicate(&self, canonical_path: &Path, repo_root: &Path) -> bool {
         let home = std::env::var_os("HOME")
             .or_else(|| std::env::var_os("USERPROFILE"))
