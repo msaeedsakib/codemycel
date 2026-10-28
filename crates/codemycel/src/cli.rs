@@ -1,7 +1,4 @@
-#![expect(
-    dead_code,
-    reason = "stub commands do not read their arguments until Phase 5"
-)]
+#![expect(dead_code, reason = "stub commands do not read their arguments yet")]
 
 use std::path::PathBuf;
 
