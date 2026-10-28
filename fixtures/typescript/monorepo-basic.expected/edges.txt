@@ -1,3 +1,6 @@
+packages/app/package.json (package)	contains	packages/app/src/main.ts (file)	0
+packages/app/package.json (package)	contains	packages/app/src/view.tsx (file)	0
+packages/app/package.json (package)	depends_on	packages/core/package.json (package)	0
 packages/app/src/main.ts (file)	contains	packages/app/src/main.ts::Gallery (class)	0
 packages/app/src/main.ts (file)	contains	packages/app/src/main.ts::build (function)	0
 packages/app/src/main.ts::Gallery (class)	contains	packages/app/src/main.ts::Gallery::add (method)	0
@@ -5,6 +8,9 @@ packages/app/src/main.ts::Gallery (class)	contains	packages/app/src/main.ts::Gal
 packages/app/src/main.ts::Gallery (class)	contains	packages/app/src/main.ts::Gallery::total (method)	0
 packages/app/src/view.tsx (file)	contains	packages/app/src/view.tsx::Badge (function)	0
 packages/app/src/view.tsx (file)	contains	packages/app/src/view.tsx::CircleBadge (function)	0
+packages/core/package.json (package)	contains	packages/core/src/index.ts (file)	0
+packages/core/package.json (package)	contains	packages/core/src/math.ts (file)	0
+packages/core/package.json (package)	contains	packages/core/src/shapes.ts (file)	0
 packages/core/src/math.ts (file)	contains	packages/core/src/math.ts::TAU (constant)	0
 packages/core/src/math.ts (file)	contains	packages/core/src/math.ts::Units (module)	0
 packages/core/src/math.ts (file)	contains	packages/core/src/math.ts::calls (variable)	0
@@ -40,3 +46,5 @@ packages/core/src/shapes.ts::Square (class)	contains	packages/core/src/shapes.ts
 packages/scripts/Banner.jsx (file)	contains	packages/scripts/Banner.jsx::Banner (function)	0
 packages/scripts/Banner.jsx (file)	contains	packages/scripts/Banner.jsx::Footer (function)	0
 packages/scripts/build.js (file)	contains	packages/scripts/build.js::outputDir (function)	0
+packages/scripts/package.json (package)	contains	packages/scripts/Banner.jsx (file)	0
+packages/scripts/package.json (package)	contains	packages/scripts/build.js (file)	0

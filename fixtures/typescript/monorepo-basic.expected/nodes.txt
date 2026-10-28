@@ -1,3 +1,5 @@
+package.json	package	-
+packages/app/package.json	package	-
 packages/app/src/main.ts	file	1-21
 packages/app/src/main.ts::Gallery	class	4-15
 packages/app/src/main.ts::Gallery::add	method	7-10
@@ -7,6 +9,7 @@ packages/app/src/main.ts::build	function	17-21
 packages/app/src/view.tsx	file	1-7
 packages/app/src/view.tsx::Badge	function	3-5
 packages/app/src/view.tsx::CircleBadge	function	7-7
+packages/core/package.json	package	-
 packages/core/src/index.ts	file	1-3
 packages/core/src/math.ts	file	1-49
 packages/core/src/math.ts::TAU	constant	1-1
@@ -47,3 +50,4 @@ packages/scripts/Banner.jsx::Banner	function	3-9
 packages/scripts/Banner.jsx::Footer	function	11-15
 packages/scripts/build.js	file	1-8
 packages/scripts/build.js::outputDir	function	4-6
+packages/scripts/package.json	package	-
