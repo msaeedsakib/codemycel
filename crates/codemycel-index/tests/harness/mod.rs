@@ -82,7 +82,41 @@ pub fn fixture_copy(source: &Path) -> (TempDir, PathBuf) {
     let temp = tempfile::tempdir().unwrap();
     let copy = temp.path().join(source.file_name().unwrap());
     copy_dir(source, &copy);
+    #[cfg(windows)]
+    restore_links(&copy);
     (temp, copy)
+}
+
+/// Fixture symlinks a Windows checkout without symlink support holds as plain files of their
+/// target, recreated as directory junctions.
+#[cfg(windows)]
+fn restore_links(copy: &Path) {
+    const LINKS: [&str; 1] = ["packages/app/node_modules/@fixture/core"];
+    for relative in LINKS {
+        let link = copy.join(relative);
+        if !link.symlink_metadata().is_ok_and(|m| m.is_file()) {
+            continue;
+        }
+        let target = std::fs::read_to_string(&link).unwrap();
+        std::fs::remove_file(&link).unwrap();
+        let mut resolved = link.parent().unwrap().to_owned();
+        for part in target.trim().split(['/', '\\']) {
+            match part {
+                "" | "." => {}
+                ".." => {
+                    resolved.pop();
+                }
+                name => resolved.push(name),
+            }
+        }
+        let status = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(&link)
+            .arg(&resolved)
+            .status()
+            .unwrap();
+        assert!(status.success(), "mklink /J failed for {}", link.display());
+    }
 }
 
 /// `Pipeline::run` with `registry`'s servers, found by `provisioner`, and no SCIP index.
