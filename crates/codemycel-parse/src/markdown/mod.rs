@@ -167,20 +167,31 @@ impl Document<'_> {
         Ok((headings, starts))
     }
 
-    /// The heading's visible text: link destinations and titles dropped, an ATX closing sequence
-    /// removed, whitespace trimmed.
+    /// The heading's visible text: a link reduced to its text, an image's destination and title
+    /// dropped, an ATX closing sequence removed, whitespace trimmed.
     fn heading_text(&self, content: TsNode<'_>, atx: bool) -> String {
         let mut hidden = Vec::new();
         if let Some(inline) = self.tree.inline_tree(&content) {
             let mut nodes = Vec::new();
             preorder(inline.root_node(), &mut nodes);
-            hidden.extend(
-                nodes
-                    .iter()
-                    .filter(|n| matches!(n.kind(), "link_destination" | "link_title"))
-                    .map(|n| n.byte_range()),
-            );
+            for node in nodes {
+                match node.kind() {
+                    "inline_link"
+                    | "full_reference_link"
+                    | "collapsed_reference_link"
+                    | "shortcut_link" => match child_of_kind(node, "link_text") {
+                        Some(text) => {
+                            hidden.push(node.start_byte()..text.start_byte());
+                            hidden.push(text.end_byte()..node.end_byte());
+                        }
+                        None => hidden.push(node.byte_range()),
+                    },
+                    "link_destination" | "link_title" => hidden.push(node.byte_range()),
+                    _ => {}
+                }
+            }
         }
+        hidden.sort_by_key(|range| range.start);
         let mut text = String::new();
         let mut at = content.start_byte();
         for range in hidden {
