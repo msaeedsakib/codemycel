@@ -277,6 +277,65 @@ fn implementer_in_another_root_is_written_by_its_own_root() {
 }
 
 #[test]
+fn scip_impl_block_yields_implements_and_overrides() {
+    let repo = Repo::new(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "mod b;\n\npub struct S;\n\nimpl b::T for S {\n    fn go(&self) {}\n}\n",
+        ),
+        ("src/b.rs", B),
+    ]);
+    let trait_t = node("src/b.rs::T", NodeKind::Trait);
+    let struct_s = node("src/lib.rs::S", NodeKind::Struct);
+    let mut scip = StubScip::default();
+    for file in ["src/lib.rs", "src/b.rs"] {
+        scip.covers.insert(RepoPath::new(file).unwrap());
+    }
+    for (text, target) in [("T", &trait_t), ("S", &struct_s)] {
+        scip.verdicts.insert(
+            ("src/lib.rs".to_owned(), text.to_owned()),
+            Verdict::Confirmed {
+                target: target.clone(),
+            },
+        );
+    }
+    let adapter = FakeAdapter::new(&repo.scenario(json!([])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), Some(&scip));
+    let id = |n: &NodeRef| {
+        run.store
+            .node_by_semantic_path(&n.path, Some(n.kind))
+            .unwrap()[0]
+            .id
+    };
+    let implements = run
+        .store
+        .edges_from(id(&struct_s), &[EdgeKind::Implements])
+        .unwrap();
+    assert_eq!(implements.len(), 1, "{implements:#?}");
+    assert_eq!(implements[0].edge.dst, trait_t);
+    assert_eq!(implements[0].edge.verified_by, VerifiedBy::Scip);
+    assert_eq!(
+        implements[0].edge.occurrences,
+        [Occurrence { line: 5, col: 8 }]
+    );
+    let overrides = run
+        .store
+        .edges_to(
+            id(&node("src/b.rs::T::go", NodeKind::Method)),
+            &[EdgeKind::Overrides],
+        )
+        .unwrap();
+    assert_eq!(overrides.len(), 1, "{overrides:#?}");
+    assert_eq!(overrides[0].edge.src.kind, NodeKind::Method);
+    assert_eq!(overrides[0].edge.src.path.name(), "go");
+    assert_ne!(overrides[0].edge.src, overrides[0].edge.dst);
+    assert_eq!(overrides[0].edge.verified_by, VerifiedBy::Scip);
+    assert!(overrides[0].edge.occurrences.is_empty());
+}
+
+#[test]
 fn scip_implementers_are_kept_only_for_implementing_kinds() {
     let repo = Repo::new(&[
         ("Cargo.toml", MANIFEST),
