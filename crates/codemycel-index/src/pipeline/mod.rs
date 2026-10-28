@@ -204,6 +204,11 @@ impl Pipeline {
             let scope = Scope {
                 files: plan.reverify.clone(),
                 implementer_sources: plan.implementer_sources.clone(),
+                statuses: store
+                    .roots()?
+                    .into_iter()
+                    .filter_map(|stored| Some((stored.root, stored.status?)))
+                    .collect(),
             };
             (scope, Some(plan))
         };
@@ -236,7 +241,7 @@ impl Pipeline {
         sources.progress.phase(Phase::Write, started.elapsed());
         Ok(SyncReport {
             full,
-            reverified: scope.files.len(),
+            reverified: verified.files.len(),
             pipeline: staged.report(docs, verified.statuses),
             changes,
         })

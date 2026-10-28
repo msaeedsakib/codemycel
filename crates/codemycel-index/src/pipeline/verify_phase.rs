@@ -39,6 +39,9 @@ pub struct Scope {
     pub files: BTreeSet<RepoPath>,
     /// Files whose traits and interfaces are asked for implementers; a superset of `files`.
     pub implementer_sources: BTreeSet<RepoPath>,
+    /// Each root's stored status. A root stored degraded, or one whose server, coverage, or
+    /// degradation comes out different from its stored status, has every file rebuilt.
+    pub statuses: BTreeMap<Root, RootStatus>,
 }
 
 impl Scope {
@@ -47,6 +50,7 @@ impl Scope {
         Self {
             implementer_sources: files.clone(),
             files,
+            statuses: BTreeMap::new(),
         }
     }
 
@@ -62,6 +66,9 @@ impl Scope {
 /// Verdicts, edges, and per-root status of a verify run, ready to write.
 #[derive(Debug, Default)]
 pub struct Verified {
+    /// Files whose verification this run rebuilt: the scope's, and every file of a root it
+    /// rebuilt whole.
+    pub files: BTreeSet<RepoPath>,
     pub edges: Vec<Edge>,
     pub unresolved: Vec<Unresolved>,
     pub partially_enriched: BTreeSet<RepoPath>,
@@ -185,20 +192,18 @@ pub fn run(
                 .filter(|u| scope.files.contains(&u.candidate.file)),
         );
     }
+    verified.files = scope.files.clone();
+    let server = |root: &Root| registry.server_for(root.language).map(|s| s.name());
     for root in staged.roots.roots() {
         let files = per_root.get(root).map_or(&[][..], Vec::as_slice);
         let has_scip = files.iter().any(|file| scip_covered.contains(file));
-        let lsp_all: Vec<&RepoPath> = files
+        let lsp_all: Vec<RepoPath> = files
             .iter()
             .filter(|file| !scip_covered.contains(*file))
+            .cloned()
             .collect();
-        let lsp_files: Vec<RepoPath> = lsp_all
-            .iter()
-            .filter(|file| scope.files.contains(**file))
-            .map(|file| (*file).clone())
-            .collect();
-        let status = if lsp_all.is_empty() {
-            RootStatus {
+        if lsp_all.is_empty() {
+            let status = RootStatus {
                 server: None,
                 coverage: if has_scip {
                     Coverage::Scip
@@ -207,23 +212,38 @@ pub fn run(
                 },
                 degraded: None,
                 config_diagnostics: Vec::new(),
-            }
-        } else if lsp_files.is_empty() {
+            };
+            verified.statuses.push((root.clone(), status));
             continue;
+        }
+        let stored = scope.statuses.get(root);
+        let lsp_files: Vec<RepoPath> = if stored.is_some_and(|s| s.degraded.is_some()) {
+            lsp_all.clone()
         } else {
-            let started = Instant::now();
-            let server = |root: &Root| registry.server_for(root.language).map(|s| s.name());
-            let enriched: BTreeSet<&RepoPath> = lsp_files.iter().collect();
-            let others: Vec<RepoPath> = per_root
+            lsp_all
                 .iter()
-                .filter(|(other, _)| server(other).is_some() && server(other) == server(root))
-                .flat_map(|(_, files)| files)
-                .filter(|file| {
-                    scope.implementer_sources.contains(*file) && !enriched.contains(file)
-                })
+                .filter(|file| scope.files.contains(*file))
                 .cloned()
+                .collect()
+        };
+        if lsp_files.is_empty() {
+            continue;
+        }
+        let started = Instant::now();
+        let same_server: Vec<&RepoPath> = per_root
+            .iter()
+            .filter(|(other, _)| server(other).is_some() && server(other) == server(root))
+            .flat_map(|(_, files)| files)
+            .collect();
+        let enrich = |files: &[RepoPath], whole: bool| {
+            let enriched: BTreeSet<&RepoPath> = files.iter().collect();
+            let others: Vec<RepoPath> = same_server
+                .iter()
+                .filter(|file| whole || scope.implementer_sources.contains(**file))
+                .filter(|file| !enriched.contains(**file))
+                .map(|file| (*file).clone())
                 .collect();
-            let lsp = match (
+            match (
                 registry.server_for(root.language),
                 registry.for_language(root.language),
             ) {
@@ -234,40 +254,61 @@ pub fn run(
                     server,
                     language,
                     view,
-                    files: &lsp_files,
+                    files,
                     others: &others,
                 }),
-                _ => RootOutcome::degraded(view, &lsp_files, DegradeReason::NoServer, None),
-            };
-            let coverage = match (lsp.degraded.is_none(), has_scip) {
-                (true, true) => Coverage::ScipAndLsp,
-                (true, false) => Coverage::Lsp,
-                (false, true) => Coverage::Scip,
-                (false, false) => Coverage::None,
-            };
-            let edges = ownership.retain(Owner::Lsp(root), lsp.edges);
-            verified
-                .edges
-                .extend(edges.into_iter().filter(|edge| scope.keeps(edge)));
-            verified.unresolved.extend(lsp.unresolved);
-            verified.partially_enriched.extend(
-                lsp.partially_enriched
-                    .into_iter()
-                    .filter(|file| scope.files.contains(file)),
-            );
-            let status = RootStatus {
-                server: lsp.server,
-                coverage,
-                degraded: lsp.degraded,
-                config_diagnostics: lsp.config_diagnostics,
-            };
-            sources.progress.root(root, &status, started.elapsed());
-            status
+                _ => RootOutcome::degraded(view, files, DegradeReason::NoServer, None),
+            }
         };
+        let mut whole = lsp_files.len() == lsp_all.len();
+        let mut lsp = enrich(&lsp_files, whole);
+        if !whole && !stored.is_some_and(|s| same_verification(s, &root_status(&lsp, has_scip))) {
+            lsp = match lsp.degraded {
+                Some(reason) => RootOutcome::degraded(view, &lsp_all, reason, lsp.server),
+                None => enrich(&lsp_all, true),
+            };
+            whole = true;
+        }
+        if whole {
+            verified.files.extend(lsp_all);
+        }
+        let status = root_status(&lsp, has_scip);
+        let edges = ownership.retain(Owner::Lsp(root), lsp.edges);
+        verified
+            .edges
+            .extend(edges.into_iter().filter(|edge| whole || scope.keeps(edge)));
+        verified.unresolved.extend(lsp.unresolved);
+        verified.partially_enriched.extend(lsp.partially_enriched);
+        sources.progress.root(root, &status, started.elapsed());
         verified.statuses.push((root.clone(), status));
     }
+    let rebuilt = &verified.files;
+    verified
+        .partially_enriched
+        .retain(|file| rebuilt.contains(file));
     verified.scip_covered = scip_covered;
     Ok(verified)
+}
+
+fn root_status(lsp: &RootOutcome, has_scip: bool) -> RootStatus {
+    let coverage = match (lsp.degraded.is_none(), has_scip) {
+        (true, true) => Coverage::ScipAndLsp,
+        (true, false) => Coverage::Lsp,
+        (false, true) => Coverage::Scip,
+        (false, false) => Coverage::None,
+    };
+    RootStatus {
+        server: lsp.server.clone(),
+        coverage,
+        degraded: lsp.degraded,
+        config_diagnostics: lsp.config_diagnostics.clone(),
+    }
+}
+
+/// Whether two statuses come from the same server with the same coverage and degradation, so
+/// verdicts recorded under one hold under the other.
+fn same_verification(a: &RootStatus, b: &RootStatus) -> bool {
+    a.server == b.server && a.coverage == b.coverage && a.degraded == b.degraded
 }
 
 /// Writes edges, unresolved rows, partial-enrichment marks, and root status, then refreshes the
