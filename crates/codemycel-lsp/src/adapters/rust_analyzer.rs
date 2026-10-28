@@ -97,7 +97,10 @@ impl ServerAdapter for RustAnalyzer {
             .trim_start_matches("rust-analyzer")
             .trim();
         if version.is_empty() {
-            Err(format!("`{} --version` printed no version", binary.display()))
+            Err(format!(
+                "`{} --version` printed no version",
+                binary.display()
+            ))
         } else {
             Ok(version.to_owned())
         }

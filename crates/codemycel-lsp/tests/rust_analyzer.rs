@@ -10,7 +10,10 @@ use serde_json::{Value, json};
 
 fn build_flags(options: &Value) -> (Value, Value) {
     (
-        options.pointer("/cargo/buildScripts/enable").cloned().unwrap(),
+        options
+            .pointer("/cargo/buildScripts/enable")
+            .cloned()
+            .unwrap(),
         options.pointer("/procMacro/enable").cloned().unwrap(),
     )
 }
