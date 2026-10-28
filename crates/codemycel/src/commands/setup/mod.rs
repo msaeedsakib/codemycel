@@ -196,7 +196,9 @@ fn edit(
     Ok(true)
 }
 
+/// Writes through a symlink to its target, so linked dotfiles stay linked.
 fn write(path: &Path, text: &str) -> anyhow::Result<()> {
+    let path = &std::fs::canonicalize(path).unwrap_or_else(|_| path.to_owned());
     let Some(dir) = path.parent() else {
         bail!("no parent directory");
     };
