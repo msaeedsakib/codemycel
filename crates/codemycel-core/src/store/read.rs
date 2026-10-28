@@ -9,8 +9,8 @@ use super::error::Result;
 use super::sql::{hash_at, json_at, occurrences_at};
 use crate::{
     ByteRange, Candidate, CandidateRole, Community, Coverage, Edge, EdgeKind, FileId, FileRecord,
-    ImplRecord, Node, NodeId, NodeKind, NodeRef, Note, NoteId, Occurrence, RepoPath, Root, RootId,
-    RootStatus, SearchHit, SemanticPath, ServerInfo, Span, StoredNode, Unresolved,
+    ImplRecord, Node, NodeId, NodeKind, NodeRef, Note, NoteId, Occurrence, Package, RepoPath, Root,
+    RootId, RootStatus, SearchHit, SemanticPath, ServerInfo, Span, StoredNode, Unresolved,
     UnresolvedReason, VerifiedBy,
 };
 
@@ -478,6 +478,136 @@ pub trait StoreRead {
     /// `<file>\t<self type>\t<trait or ->\t<line_start>-<line_end>` per impl record, sorted.
     fn dump_impl_records(&self) -> Result<String> {
         dump::impl_records(self.conn())
+    }
+
+    /// Code symbols with their count of incoming `kinds` edges, highest first, then by semantic
+    /// path and kind; at most `limit`. Files, packages, docs, headings, communities and notes are
+    /// left out. `community` keeps only its members, `file` only the nodes in that file.
+    fn nodes_by_in_degree(
+        &self,
+        kinds: &[EdgeKind],
+        community: Option<NodeId>,
+        file: Option<&RepoPath>,
+        limit: u32,
+    ) -> Result<Vec<(NodeId, u64)>> {
+        let placeholders: Vec<String> = (4..kinds.len() + 4).map(|i| format!("?{i}")).collect();
+        let degree = if kinds.is_empty() {
+            "0".to_owned()
+        } else {
+            format!(
+                "(SELECT count(*) FROM edges e WHERE e.dst = n.id AND e.kind IN ({}))",
+                placeholders.join(", ")
+            )
+        };
+        let sql = format!(
+            "SELECT n.id, {degree} AS degree FROM nodes n LEFT JOIN files f ON f.id = n.file_id
+             WHERE n.kind NOT IN ('file', 'package', 'doc', 'heading', 'community', 'note')
+               AND (?1 IS NULL OR n.community_id = ?1) AND (?2 IS NULL OR f.path = ?2)
+             ORDER BY degree DESC, n.semantic_path, n.kind
+             LIMIT ?3"
+        );
+        let mut values = vec![
+            community.map_or(Value::Null, |id| Value::Integer(id.0)),
+            file.map_or(Value::Null, |path| Value::Text(path.as_str().to_owned())),
+            Value::Integer(i64::from(limit)),
+        ];
+        values.extend(kinds.iter().map(|k| Value::Text(k.as_str().to_owned())));
+        let mut stmt = self.conn().prepare(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |row| {
+            Ok((NodeId(row.get(0)?), row.get::<_, i64>(1)?))
+        })?;
+        let mut ranked = Vec::new();
+        for row in rows {
+            let (id, degree) = row?;
+            ranked.push((id, to_u64(degree)?));
+        }
+        Ok(ranked)
+    }
+
+    /// Every unresolved candidate whose text is `text`, by file, line, and column.
+    fn unresolved_with_text(&self, text: &str) -> Result<Vec<StoredUnresolved>> {
+        let sql =
+            format!("{UNRESOLVED_SELECT} WHERE u.text = ?1 ORDER BY f.path, u.line, u.col, u.id");
+        let mut stmt = self.conn().prepare_cached(&sql)?;
+        let rows = stmt.query_map([text], stored_unresolved)?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Unresolved candidates per root and reason, by root id and reason; only `reason` when set.
+    /// Files under no root count under `None`.
+    fn unresolved_counts_by_root(
+        &self,
+        reason: Option<UnresolvedReason>,
+    ) -> Result<Vec<(Option<RootId>, UnresolvedReason, u64)>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT f.root_id, u.reason, count(*) FROM unresolved u
+             JOIN files f ON f.id = u.file_id
+             WHERE ?1 IS NULL OR u.reason = ?1
+             GROUP BY f.root_id, u.reason ORDER BY f.root_id, u.reason",
+        )?;
+        let rows = stmt.query_map([reason], |row| {
+            Ok((
+                row.get::<_, Option<i64>>(0)?.map(RootId),
+                row.get(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        let mut counts = Vec::new();
+        for row in rows {
+            let (root, reason, count) = row?;
+            counts.push((root, reason, to_u64(count)?));
+        }
+        Ok(counts)
+    }
+
+    /// Unresolved candidates per file, most first, then by path; only `reason` when set.
+    fn unresolved_counts_by_file(
+        &self,
+        reason: Option<UnresolvedReason>,
+    ) -> Result<Vec<(RepoPath, u64)>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT f.path, count(*) AS n FROM unresolved u JOIN files f ON f.id = u.file_id
+             WHERE ?1 IS NULL OR u.reason = ?1
+             GROUP BY f.path ORDER BY n DESC, f.path",
+        )?;
+        let rows = stmt.query_map([reason], |row| Ok((row.get(0)?, row.get::<_, i64>(1)?)))?;
+        let mut counts = Vec::new();
+        for row in rows {
+            let (path, count) = row?;
+            counts.push((path, to_u64(count)?));
+        }
+        Ok(counts)
+    }
+
+    /// Every package, workspace and external, by name and semantic path.
+    fn packages(&self) -> Result<Vec<Package>> {
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT n.semantic_path, n.kind, p.name, p.version, p.external, f.path
+             FROM packages p JOIN nodes n ON n.id = p.node_id
+             LEFT JOIN files f ON f.id = p.manifest_file_id
+             ORDER BY p.name, n.semantic_path",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(Package {
+                node: NodeRef::new(row.get(0)?, row.get(1)?),
+                name: row.get(2)?,
+                version: row.get(3)?,
+                external: row.get(4)?,
+                manifest: row.get(5)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// The database's size in bytes: its page count times its page size.
+    fn database_size(&self) -> Result<u64> {
+        let pages: i64 = self
+            .conn()
+            .query_row("PRAGMA page_count", [], |row| row.get(0))?;
+        let size: i64 = self
+            .conn()
+            .query_row("PRAGMA page_size", [], |row| row.get(0))?;
+        to_u64(pages.saturating_mul(size))
     }
 }
 
