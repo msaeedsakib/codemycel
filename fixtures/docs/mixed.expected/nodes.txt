@@ -1,0 +1,10 @@
+crate/Cargo.toml	package	-
+docs/guide.md	doc	1-19
+docs/guide.md#guide	heading	3-19
+docs/guide.md#storage	heading	9-16
+docs/guide.md#storage[1]	heading	17-19
+docs/setup.md	doc	1-4
+docs/setup.md#setup	heading	1-4
+package:cargo:serde	package	-
+package:npm:left-pad	package	-
+pkg/package.json	package	-

@@ -1,3 +1,4 @@
+mod docs_phase;
 mod parse_phase;
 mod write_phase;
 
@@ -6,6 +7,8 @@ use std::path::Path;
 use codemycel_core::config::Config;
 use codemycel_core::store::Store;
 use codemycel_core::{RepoPath, SkipReason};
+
+pub use docs_phase::DocsCounts;
 
 use crate::{IndexError, Registry, RootDetector, Walker};
 
@@ -16,16 +19,19 @@ pub struct PipelineReport {
     pub parsed: usize,
     pub skipped: Vec<(RepoPath, SkipReason)>,
     pub roots: usize,
+    /// File and symbol nodes of parsed code files.
     pub nodes: usize,
     pub structural_edges: usize,
     pub candidates: usize,
+    pub docs: DocsCounts,
 }
 
 pub struct Pipeline;
 
 impl Pipeline {
-    /// Walks, detects roots, parses every rooted code file, and writes the syntactic graph into
-    /// an empty store in one transaction (spec §5.3 without the resolvers).
+    /// Walks, detects roots, parses every rooted code file, then the documents and manifests,
+    /// and writes the syntactic graph into an empty store in one transaction (spec §5.3 without
+    /// the resolvers).
     pub fn parse_only(
         repo_root: &Path,
         config: &Config,
@@ -36,8 +42,15 @@ impl Pipeline {
         let listed: Vec<RepoPath> = files.iter().map(|file| file.path.clone()).collect();
         let roots = RootDetector::detect(repo_root, &listed, config, registry)?;
         let (assignment, parsed) = parse_phase::run(repo_root, &mut files, &roots, registry)?;
-        store
-            .transaction(|tx| write_phase::run(tx, &files, roots.roots(), &assignment, &parsed))?;
+        let docs = docs_phase::prepare(repo_root, &files)?;
+        let code_files: Vec<RepoPath> = parsed
+            .iter()
+            .map(|code| files[code.file].path.clone())
+            .collect();
+        let docs = store.transaction(|tx| {
+            write_phase::run(tx, &files, roots.roots(), &assignment, &parsed)?;
+            docs_phase::write(tx, &docs, &code_files)
+        })?;
         Ok(PipelineReport {
             files: files.len(),
             parsed: parsed.len(),
@@ -52,6 +65,7 @@ impl Pipeline {
                 .map(|code| code.parsed.structural_edges.len())
                 .sum(),
             candidates: parsed.iter().map(|code| code.parsed.candidates.len()).sum(),
+            docs,
         })
     }
 }

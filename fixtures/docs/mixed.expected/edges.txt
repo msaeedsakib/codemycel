@@ -1,0 +1,6 @@
+crate/Cargo.toml (package)	depends_on	package:cargo:serde (package)	0
+docs/guide.md (doc)	contains	docs/guide.md#guide (heading)	0
+docs/guide.md (doc)	contains	docs/guide.md#storage (heading)	0
+docs/guide.md (doc)	contains	docs/guide.md#storage[1] (heading)	0
+docs/setup.md (doc)	contains	docs/setup.md#setup (heading)	0
+pkg/package.json (package)	depends_on	package:npm:left-pad (package)	0
