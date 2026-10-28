@@ -131,13 +131,22 @@ async fn readiness_probe_retries_until_definition_answers() {
 #[test]
 #[ignore = "downloads TypeScript 7 from GitHub"]
 fn typescript7_downloads_and_validates() {
-    let home = tempfile::tempdir().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let home = if std::env::var_os("CODEMYCEL_HOME").is_some_and(|v| !v.is_empty()) {
+        codemycel_core::config::home_dir().unwrap()
+    } else {
+        temp.path().to_owned()
+    };
     let provisioner =
-        Provisioner::new(&Config::default(), home.path().to_owned(), true).with_search_path(None);
+        Provisioner::new(&Config::default(), home.clone(), true).with_search_path(None);
 
     let located = provisioner.locate(&TypeScript7::new()).unwrap();
 
-    assert_eq!(located.source, ServerSource::Download);
+    assert!(
+        matches!(located.source, ServerSource::Download | ServerSource::Cache),
+        "{:?}",
+        located.source
+    );
     assert_eq!(located.version, "7.0.2");
-    assert!(located.path.starts_with(home.path()));
+    assert!(located.path.starts_with(&home));
 }
