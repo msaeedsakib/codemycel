@@ -232,6 +232,78 @@ async fn probe_timeout_proceeds_without_degrading() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn probe_skips_files_without_candidates() {
+    let fixture = Fixture::new();
+    let empty = RepoPath::new("src/a.rs").unwrap();
+    let empty_text = "pub struct A;\n";
+    std::fs::write(fixture.root().join(empty.as_str()), empty_text).unwrap();
+    let parsed = fixture
+        .language
+        .parse(&empty, empty_text.as_bytes())
+        .unwrap();
+    assert!(parsed.candidates.is_empty());
+    let mut view = fixture.view.clone();
+    view.insert(
+        empty.clone(),
+        FileView::new(&empty, empty_text.to_owned(), parsed).unwrap(),
+    );
+    let import = fixture
+        .candidates()
+        .iter()
+        .find(|c| c.role == CandidateRole::Import)
+        .cloned()
+        .unwrap();
+    let log = fixture.root().join("messages.log");
+    let scenario = json!({
+        "log_file": log,
+        "responses": [respond(
+            "textDocument/definition",
+            fixture.position(&import),
+            json!([fixture.location("pub struct ", "Circle")])
+        )],
+    });
+    let adapter = FakeAdapter::new(&fixture.scenario(scenario)).readiness(
+        ReadinessStrategy::ProbeDefinition {
+            timeout: Duration::from_secs(10),
+        },
+    );
+    let launch = ServerLaunch {
+        adapter: &adapter,
+        binary: fake_lsp(),
+        config: ServerConfig::default(),
+        search_path: None,
+    };
+    let files = [empty, fixture.files[0].clone()];
+    let enricher = Enricher::start(
+        launch,
+        &fixture.language,
+        &view,
+        fixture.root(),
+        &RepoPath::new("").unwrap(),
+        &files,
+        EnrichOptions::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(enricher.readiness(), Readiness::Ready);
+    enricher.shutdown().await;
+    let probe = std::fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .find(|message| message["method"] == "textDocument/definition")
+        .unwrap();
+    let at = fixture.position(&import);
+    assert!(
+        probe["params"]["textDocument"]["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with(FILE)
+    );
+    assert_eq!(probe["params"]["position"], json!(at));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn launch_failure_is_start_failed() {
     let fixture = Fixture::new();
     let adapter = FakeAdapter::new(&fixture.scenario(json!({})));

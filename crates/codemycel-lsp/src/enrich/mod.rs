@@ -154,7 +154,8 @@ pub struct Enricher<'a> {
 
 impl<'a> Enricher<'a> {
     /// Starts the root's server and waits until it is ready. `files` are the root's files this
-    /// server will enrich; the first is the readiness probe's file.
+    /// server will enrich; the first in sorted order with a candidate is the readiness probe's
+    /// file.
     pub async fn start(
         launch: ServerLaunch<'a>,
         language: &'a dyn LanguageAdapter,
@@ -168,7 +169,7 @@ impl<'a> Enricher<'a> {
         let session = Session::start(launch, &absolute(repo_root, root)).await?;
         let mut sorted = files.to_vec();
         sorted.sort();
-        let probe = sorted.first().and_then(|file| {
+        let probe = sorted.iter().find_map(|file| {
             probe_for(view, repo_root, file, adapter.language_id(extension(file)))
         });
         let readiness = session.wait_ready(probe.as_ref()).await;
