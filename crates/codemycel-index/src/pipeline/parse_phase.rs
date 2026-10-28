@@ -1,8 +1,9 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use codemycel_core::{
-    ByteRange, FileKind, FileRecord, Node, NodeKind, ParsedFile, Root, SemanticPath, SkipReason,
-    Span,
+    ByteRange, Candidate, CandidateRole, FileKind, FileRecord, Node, NodeKind, ParsedFile, Root,
+    SemanticPath, SkipReason, Span,
 };
 use rayon::prelude::*;
 
@@ -51,15 +52,76 @@ pub fn run(
                 path: absolute,
                 source,
             })?;
+            let parsed = adapter.parse(&file.path, &bytes)?;
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let mut file_node = file_node(file, &bytes)?;
+            file_node.body_hash = surface_hash(&text, &parsed);
             Ok(ParsedCode {
                 file: index,
-                file_node: file_node(file, &bytes)?,
-                parsed: adapter.parse(&file.path, &bytes)?,
-                text: String::from_utf8_lossy(&bytes).into_owned(),
+                file_node,
+                parsed,
+                text,
             })
         })
         .collect::<Result<Vec<_>, IndexError>>()?;
     Ok((assignment, parsed))
+}
+
+/// An import or export candidate outside every function and method body: one that can change
+/// what the file, or the modules below it, expose to the rest of the repository.
+pub fn is_surface(candidate: &Candidate) -> bool {
+    matches!(
+        candidate.role,
+        CandidateRole::Import | CandidateRole::Export
+    ) && !matches!(
+        candidate.enclosing.kind,
+        NodeKind::Function | NodeKind::Method
+    )
+}
+
+/// A hash of the file's import and export statements: for every surface candidate, the stretch
+/// of text between the symbols before and after it, whitespace dropped. `None` without one.
+fn surface_hash(text: &str, parsed: &ParsedFile) -> Option<blake3::Hash> {
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(at, _)| at + 1))
+        .collect();
+    let spans: Vec<(usize, usize)> = parsed
+        .nodes
+        .iter()
+        .filter_map(|node| node.span)
+        .map(|span| (span.bytes.start as usize, span.bytes.end as usize))
+        .collect();
+    let stretches: BTreeSet<(usize, usize)> = parsed
+        .candidates
+        .iter()
+        .filter(|candidate| is_surface(candidate))
+        .filter_map(|candidate| {
+            let line_start = *line_starts.get((candidate.at.line as usize).checked_sub(1)?)?;
+            let (column, _) = text
+                .get(line_start..)?
+                .char_indices()
+                .nth(candidate.at.col as usize)?;
+            let at = line_start + column;
+            let start = spans.iter().map(|s| s.1).filter(|end| *end <= at).max();
+            let end = spans.iter().map(|s| s.0).filter(|start| *start > at).min();
+            Some((start.unwrap_or(0), end.unwrap_or(text.len())))
+        })
+        .collect();
+    if stretches.is_empty() {
+        return None;
+    }
+    let mut hasher = blake3::Hasher::new();
+    for (start, end) in stretches {
+        let stretch: String = text
+            .get(start..end)
+            .unwrap_or_default()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        hasher.update(stretch.as_bytes());
+        hasher.update(&[0]);
+    }
+    Some(hasher.finalize())
 }
 
 fn file_node(file: &FileRecord, bytes: &[u8]) -> Result<Node, IndexError> {

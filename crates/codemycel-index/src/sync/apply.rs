@@ -10,8 +10,8 @@ use crate::pipeline::{ParsedCode, Staged, Verified, verify_phase, write_phase};
 
 /// Applies an incremental plan's code-layer writes: deleted files with everything they own, the
 /// rows of added, modified, and re-verified files, the nodes of rewritten files, and the
-/// verification of re-verified files, which are the files `verified` rebuilt. The caller's transaction continues with the docs layer,
-/// notes, communities, and meta.
+/// verification of re-verified files, which are the files `verified` rebuilt. The caller's
+/// transaction continues with the docs layer, notes, communities, and meta.
 pub fn run(
     tx: &mut Tx<'_>,
     staged: &Staged,

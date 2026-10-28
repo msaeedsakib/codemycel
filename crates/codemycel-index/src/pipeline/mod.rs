@@ -13,7 +13,8 @@ use codemycel_core::config::Config;
 use codemycel_core::config::paths::notes_dir;
 use codemycel_core::store::{Store, StoreRead, Tx, meta};
 use codemycel_core::{
-    CandidateRole, Community, FileRecord, Language, Node, RepoPath, Root, RootStatus, SkipReason,
+    CandidateRole, Community, FileRecord, Language, Node, NodeKind, ParsedFile, RepoPath, Root,
+    RootStatus, SkipReason,
 };
 use codemycel_scip::{ScipError, ScipImporter, ScipIndex};
 
@@ -23,7 +24,8 @@ pub use verify_phase::{Scip, Scope, Sources, Verified};
 
 use crate::communities::CommunityDetector;
 use crate::notes::NotesReconciler;
-use crate::sync::{ChangeSet, SymbolsDiff, SyncPlan, apply};
+use crate::servers::SyncStart;
+use crate::sync::{ChangeSet, ParsedFacts, SymbolsDiff, SyncPlan, apply};
 use crate::{IndexError, Registry, RootDetector, Walker};
 
 /// What a pipeline run did.
@@ -198,11 +200,12 @@ impl Pipeline {
     ) -> Result<SyncReport, IndexError> {
         let mut staged = Staged::new(repo_root, config, registry, sources.progress)?;
         let changes = ChangeSet::between(&store.files()?, &staged.files);
+        let reconfigured = reconfigured(repo_root, &staged, &changes, registry);
         let full = mode == SyncMode::Full || needs_full(store, &staged, config, sources)?;
         let (scope, plan) = if full {
             (Scope::everything(&staged), None)
         } else {
-            let plan = plan(store, &staged, &changes, sources)?;
+            let plan = plan(store, &staged, &changes, &reconfigured, sources)?;
             let scope = Scope {
                 files: plan.reverify.clone(),
                 implementer_sources: plan.implementer_sources.clone(),
@@ -214,9 +217,12 @@ impl Pipeline {
             };
             (scope, Some(plan))
         };
-        if !changes.is_empty() {
-            sources.servers.files_changed(repo_root, &changes.paths());
-        }
+        sources.servers.sync_started(&SyncStart {
+            repo_root,
+            indexed_at: store.meta_get(meta::INDEXED_AT)?.as_deref(),
+            changed: &changes.paths(),
+            reconfigured: &reconfigured,
+        });
         let verified = verify_phase::run(&staged, repo_root, config, registry, sources, &scope)?;
         for file in &mut staged.files {
             file.scip_covered = verified.scip_covered.contains(&file.path);
@@ -241,6 +247,9 @@ impl Pipeline {
             finish(tx, &staged, &previous, repo_root, config, sources, &changes)
         })?;
         sources.progress.phase(Phase::Write, started.elapsed());
+        if let Some(indexed_at) = store.meta_get(meta::INDEXED_AT)? {
+            sources.servers.sync_finished(&indexed_at);
+        }
         Ok(SyncReport {
             full,
             reverified: verified.files.len(),
@@ -302,6 +311,7 @@ fn plan(
     store: &Store,
     staged: &Staged,
     changes: &ChangeSet,
+    reconfigured: &BTreeSet<Language>,
     sources: &Sources<'_>,
 ) -> Result<SyncPlan, IndexError> {
     let stored: BTreeMap<RepoPath, FileRecord> = store
@@ -333,10 +343,14 @@ fn plan(
         } else {
             (Vec::new(), Vec::new())
         };
-        let (new_nodes, new_impls) = now.map_or((&[][..], &[][..]), |code| {
-            (&code.parsed.nodes[..], &code.parsed.impl_records[..])
+        let new_nodes: Vec<Node> = now.map_or_else(Vec::new, |code| {
+            std::iter::once(&code.file_node)
+                .chain(&code.parsed.nodes)
+                .cloned()
+                .collect()
         });
-        let diff = SymbolsDiff::compute(&old_nodes, &old_impls, new_nodes, new_impls);
+        let new_impls = now.map_or(&[][..], |code| &code.parsed.impl_records[..]);
+        let diff = SymbolsDiff::compute(&old_nodes, &old_impls, &new_nodes, new_impls);
         symbols.insert(path, diff);
     }
     let covered = verify_phase::scip_covered(staged, sources.scip)?;
@@ -349,80 +363,90 @@ fn plan(
         })
         .map(|path| (*path).clone())
         .collect();
-    forced.extend(reached_by_project_files(staged, changes));
-    let parsed_now: BTreeSet<RepoPath> = parsed.keys().map(|path| (*path).clone()).collect();
-    let supertypes: BTreeMap<RepoPath, BTreeSet<String>> = parsed
+    forced.extend(staged.parsed.iter().filter_map(|code| {
+        let root = staged.assignment[code.file].as_ref()?;
+        reconfigured
+            .contains(&root.language)
+            .then(|| staged.files[code.file].path.clone())
+    }));
+    let facts: BTreeMap<RepoPath, ParsedFacts> = parsed
         .iter()
-        .map(|(path, code)| {
-            let candidates = code
-                .parsed
-                .candidates
-                .iter()
-                .filter(|c| matches!(c.role, CandidateRole::Implements | CandidateRole::Extends))
-                .map(|c| c.text.clone());
-            let impls = code
-                .parsed
+        .map(|(path, code)| ((*path).clone(), parsed_facts(&code.parsed)))
+        .collect();
+    SyncPlan::build(changes, &symbols, &forced, &facts, store)
+}
+
+fn parsed_facts(parsed: &ParsedFile) -> ParsedFacts {
+    let texts = |roles: &[CandidateRole]| -> BTreeSet<String> {
+        parsed
+            .candidates
+            .iter()
+            .filter(|c| roles.contains(&c.role) && parse_phase::is_surface(c))
+            .map(|c| c.text.clone())
+            .collect()
+    };
+    let supertypes = parsed
+        .candidates
+        .iter()
+        .filter(|c| matches!(c.role, CandidateRole::Implements | CandidateRole::Extends))
+        .map(|c| c.text.clone())
+        .chain(
+            parsed
                 .impl_records
                 .iter()
-                .filter_map(|record| record.trait_text.clone());
-            ((*path).clone(), candidates.chain(impls).collect())
-        })
+                .filter_map(|record| record.trait_text.clone()),
+        )
         .collect();
-    SyncPlan::build(changes, &symbols, &forced, &parsed_now, &supertypes, store)
-}
-
-/// The code files of every root whose resolution a changed manifest or project config can
-/// affect: one its language reads, inside the root's directory or in a directory above it,
-/// where workspace manifests and shared `tsconfig` files live.
-fn reached_by_project_files(staged: &Staged, changes: &ChangeSet) -> BTreeSet<RepoPath> {
-    let changed = changes
-        .added
+    let parents = parsed
+        .nodes
         .iter()
-        .chain(&changes.modified)
-        .chain(&changes.deleted);
-    let mut roots: BTreeSet<&Root> = BTreeSet::new();
-    for path in changed {
-        let (dir, name) = path
-            .as_str()
-            .rsplit_once('/')
-            .unwrap_or(("", path.as_str()));
-        let languages = project_file_languages(name);
-        roots.extend(staged.roots.roots().iter().filter(|root| {
-            let root_dir = root.path.as_str();
-            languages.contains(&root.language)
-                && (within(path.as_str(), root_dir) || within(root_dir, dir))
-        }));
-    }
-    staged
-        .parsed
-        .iter()
-        .filter(|code| {
-            staged.assignment[code.file]
-                .as_ref()
-                .is_some_and(|root| roots.contains(root))
+        .filter(|node| {
+            matches!(
+                node.kind,
+                NodeKind::Class | NodeKind::Trait | NodeKind::Interface
+            )
         })
-        .map(|code| staged.files[code.file].path.clone())
-        .collect()
-}
-
-/// The languages whose roots read a file named `name` to resolve their code.
-fn project_file_languages(name: &str) -> &'static [Language] {
-    const SCRIPT: &[Language] = &[Language::TypeScript, Language::JavaScript];
-    let tsconfig = name.starts_with("tsconfig") && name.ends_with(".json");
-    match name {
-        "Cargo.toml" => &[Language::Rust],
-        "package.json" | "jsconfig.json" => SCRIPT,
-        _ if tsconfig => SCRIPT,
-        _ => &[],
+        .map(|node| node.name.clone())
+        .collect();
+    ParsedFacts {
+        symbols: parsed.names().map(str::to_owned).collect(),
+        parents,
+        supertypes,
+        imports: texts(&[CandidateRole::Import]),
+        exports: texts(&[CandidateRole::Export]),
     }
 }
 
-/// Whether `path` is `dir` or lies below it; every path lies below the repository root, `""`.
-fn within(path: &str, dir: &str) -> bool {
-    dir.is_empty()
-        || path
-            .strip_prefix(dir)
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+/// The languages whose manifests or project configs, as each language's adapter names them,
+/// are among the changed files. Every root of such a language is re-verified, and its warm
+/// servers restarted.
+fn reconfigured(
+    repo_root: &Path,
+    staged: &Staged,
+    changes: &ChangeSet,
+    registry: &Registry,
+) -> BTreeSet<Language> {
+    if changes.is_empty() {
+        return BTreeSet::new();
+    }
+    let changed = changes.paths();
+    let listed: Vec<RepoPath> = staged
+        .files
+        .iter()
+        .map(|file| file.path.clone())
+        .chain(changes.deleted.iter().cloned())
+        .collect();
+    registry
+        .adapters()
+        .iter()
+        .filter(|adapter| {
+            adapter
+                .project_files(repo_root, &listed)
+                .iter()
+                .any(|file| changed.binary_search(file).is_ok())
+        })
+        .map(|adapter| adapter.language())
+        .collect()
 }
 
 /// The stages every sync ends with, after the code layer is written: name counts, the whole

@@ -20,6 +20,8 @@ pub struct ChangedSymbols {
     pub changed: Vec<NodeRef>,
     pub impls_added: Vec<TraitImpl>,
     pub impls_removed: Vec<TraitImpl>,
+    /// The file's import and export statements changed, as its file node's body hash says.
+    pub surface: bool,
 }
 
 impl ChangedSymbols {
@@ -33,14 +35,20 @@ pub struct SymbolsDiff;
 
 impl SymbolsDiff {
     /// Diffs a file's stored symbols and impl records against its new parse. File nodes are
-    /// not symbols and are ignored on both sides. Either side is empty for an added or deleted
-    /// file.
+    /// not symbols; only their body hashes are compared, a missing one counting as `None`.
+    /// Either side is empty for an added or deleted file.
     pub fn compute(
         old_nodes: &[Node],
         old_impls: &[ImplRecord],
         new_nodes: &[Node],
         new_impls: &[ImplRecord],
     ) -> ChangedSymbols {
+        let surface = |nodes: &[Node]| {
+            nodes
+                .iter()
+                .find(|n| n.kind == NodeKind::File)
+                .and_then(|n| n.body_hash)
+        };
         let symbols = |nodes: &[Node]| -> BTreeMap<NodeRef, Node> {
             nodes
                 .iter()
@@ -50,7 +58,10 @@ impl SymbolsDiff {
         };
         let mut old = symbols(old_nodes);
         let new = symbols(new_nodes);
-        let mut diff = ChangedSymbols::default();
+        let mut diff = ChangedSymbols {
+            surface: surface(old_nodes) != surface(new_nodes),
+            ..ChangedSymbols::default()
+        };
         for (identity, node) in &new {
             match old.remove(identity) {
                 None => diff.added.push(node.clone()),

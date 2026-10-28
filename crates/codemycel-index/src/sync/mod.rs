@@ -4,5 +4,5 @@ mod plan;
 mod symbols_diff;
 
 pub use changes::ChangeSet;
-pub use plan::SyncPlan;
+pub use plan::{ParsedFacts, SyncPlan};
 pub use symbols_diff::{ChangedSymbols, SymbolsDiff, TraitImpl};

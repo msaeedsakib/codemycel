@@ -8,10 +8,10 @@ use super::dump;
 use super::error::Result;
 use super::sql::{hash_at, json_at, occurrences_at};
 use crate::{
-    ByteRange, Candidate, Community, Coverage, Edge, EdgeKind, FileId, FileRecord, ImplRecord,
-    Node, NodeId, NodeKind, NodeRef, Note, NoteId, Occurrence, RepoPath, Root, RootId, RootStatus,
-    SearchHit, SemanticPath, ServerInfo, Span, StoredNode, Unresolved, UnresolvedReason,
-    VerifiedBy,
+    ByteRange, Candidate, CandidateRole, Community, Coverage, Edge, EdgeKind, FileId, FileRecord,
+    ImplRecord, Node, NodeId, NodeKind, NodeRef, Note, NoteId, Occurrence, RepoPath, Root, RootId,
+    RootStatus, SearchHit, SemanticPath, ServerInfo, Span, StoredNode, Unresolved,
+    UnresolvedReason, VerifiedBy,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -295,6 +295,24 @@ pub trait StoreRead {
              WHERE u.text = ?1 ORDER BY f.path",
         )?;
         let rows = stmt.query_map([text], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// The file and text of every unresolved candidate of one of `roles`, distinct and sorted.
+    fn unresolved_texts(&self, roles: &[CandidateRole]) -> Result<Vec<(RepoPath, String)>> {
+        let placeholders: Vec<String> = (1..=roles.len()).map(|i| format!("?{i}")).collect();
+        let sql = format!(
+            "SELECT DISTINCT f.path, u.text FROM unresolved u JOIN files f ON f.id = u.file_id
+             WHERE u.role IN ({}) ORDER BY f.path, u.text",
+            placeholders.join(", ")
+        );
+        let mut stmt = self.conn().prepare_cached(&sql)?;
+        let values = roles
+            .iter()
+            .map(|role| Value::Text(role.as_str().to_owned()));
+        let rows = stmt.query_map(params_from_iter(values), |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
