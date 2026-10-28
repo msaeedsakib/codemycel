@@ -10,6 +10,7 @@ use codemycel_core::{FileRecord, RepoPath, SkipReason};
 use rayon::prelude::*;
 
 pub use filter::ALWAYS_IGNORED;
+pub(crate) use filter::{config_matcher, tracked_ignored};
 
 use crate::{IndexError, Registry};
 
@@ -105,7 +106,7 @@ impl<'a> Walker<'a> {
 
 /// `relative` as a repository path, or `None` with a warning when it is not UTF-8, holds a
 /// backslash outside Windows (where it is part of a file name), or is otherwise rejected.
-fn repo_path(relative: &Path) -> Option<RepoPath> {
+pub(crate) fn repo_path(relative: &Path) -> Option<RepoPath> {
     let Some(text) = relative.to_str() else {
         tracing::warn!("skipping non-UTF-8 path {}", relative.display());
         return None;
