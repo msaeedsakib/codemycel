@@ -15,7 +15,8 @@
   (type_item)
 ] @local.scope
 
-(_pattern/identifier) @local.definition
+((_pattern/identifier) @local.definition
+  (#not-match? @local.definition "^\\p{Lu}"))
 (field_pattern name: (shorthand_field_identifier) @local.definition)
 (type_parameter name: (type_identifier) @local.definition)
 (const_parameter name: (identifier) @local.definition)

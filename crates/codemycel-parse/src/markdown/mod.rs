@@ -203,9 +203,13 @@ impl Document<'_> {
         blocks: &[TsNode<'_>],
         starts: &[HeadingStart],
     ) -> Result<(Vec<Reference>, Vec<Reference>), String> {
+        let definitions = self.definitions(blocks);
         let mut mentions = Vec::new();
         let mut links = Vec::new();
-        for block in blocks.iter().filter(|b| b.kind() == "inline") {
+        for block in blocks
+            .iter()
+            .filter(|b| matches!(b.kind(), "inline" | "pipe_table_cell"))
+        {
             let Some(inline) = self.tree.inline_tree(block) else {
                 continue;
             };
@@ -216,6 +220,14 @@ impl Document<'_> {
                     "code_span" => (mention_text(self.code_span_text(node)), &mut mentions),
                     "inline_link" => (
                         child_of_kind(node, "link_destination").and_then(|d| self.link_target(d)),
+                        &mut links,
+                    ),
+                    "full_reference_link" => (
+                        self.reference_target(child_of_kind(node, "link_label"), &definitions),
+                        &mut links,
+                    ),
+                    "collapsed_reference_link" | "shortcut_link" => (
+                        self.reference_target(child_of_kind(node, "link_text"), &definitions),
                         &mut links,
                     ),
                     _ => continue,
@@ -236,6 +248,52 @@ impl Document<'_> {
             }
         }
         Ok((mentions, links))
+    }
+
+    /// Each link reference definition's destination by normalised label; the first definition of
+    /// a label wins.
+    fn definitions<'t>(&self, blocks: &[TsNode<'t>]) -> HashMap<String, TsNode<'t>> {
+        let mut definitions = HashMap::new();
+        for block in blocks
+            .iter()
+            .filter(|b| b.kind() == "link_reference_definition")
+        {
+            if let (Some(label), Some(destination)) = (
+                child_of_kind(*block, "link_label"),
+                child_of_kind(*block, "link_destination"),
+            ) {
+                definitions
+                    .entry(self.label_key(label))
+                    .or_insert(destination);
+            }
+        }
+        definitions
+    }
+
+    fn reference_target(
+        &self,
+        label: Option<TsNode<'_>>,
+        definitions: &HashMap<String, TsNode<'_>>,
+    ) -> Option<String> {
+        let destination = definitions.get(&self.label_key(label?))?;
+        self.link_target(*destination)
+    }
+
+    /// A `link_label` or `link_text` matched as CommonMark does: brackets dropped, case folded,
+    /// whitespace collapsed.
+    fn label_key(&self, label: TsNode<'_>) -> String {
+        let text = self.source.get(label.byte_range()).unwrap_or_default();
+        let text = match label.kind() {
+            "link_label" => text
+                .strip_prefix('[')
+                .and_then(|t| t.strip_suffix(']'))
+                .unwrap_or(text),
+            _ => text,
+        };
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
     }
 
     fn code_span_text(&self, span: TsNode<'_>) -> &str {

@@ -124,11 +124,66 @@ fn relative_link_to_existing_file_is_a_mention() {
         repo.path(),
         "docs/guide.md",
         "# Code\n\n[a](../src/a.names) [again](../src/a.names#L1) [txt](../src/notes.txt) \
-         [gone](../src/b.names) [self](guide.md)\n",
+         [gone](../src/b.names)\n",
     );
     assert_eq!(
         mentions(repo.path()),
         ["docs/guide.md#code (heading)\tmentions\tsrc/a.names (file)\t2"]
+    );
+}
+
+#[test]
+fn links_to_documents_mention_them_in_any_order() {
+    let repo = tempfile::tempdir().unwrap();
+    write(
+        repo.path(),
+        "a.md",
+        "See [z](z.md) and [the end][end].\n\n[END]: ./z.md\n",
+    );
+    write(repo.path(), "z.md", "# End\n\nBack to [a](a.md#top).\n");
+    assert_eq!(
+        mentions(repo.path()),
+        [
+            "a.md (doc)\tmentions\tz.md (doc)\t2",
+            "z.md#end (heading)\tmentions\ta.md (doc)\t1",
+        ]
+    );
+}
+
+#[test]
+fn packages_sharing_a_directory_both_contain_its_files() {
+    let repo = tempfile::tempdir().unwrap();
+    write(
+        repo.path(),
+        "tool/Cargo.toml",
+        "[package]\nname = \"tool-rs\"\n",
+    );
+    write(
+        repo.path(),
+        "tool/package.json",
+        "{ \"name\": \"tool-js\" }\n",
+    );
+    write(repo.path(), "tool/src/a.names", "f\n");
+    write(
+        repo.path(),
+        "tool/inner/Cargo.toml",
+        "[package]\nname = \"inner\"\n",
+    );
+    write(repo.path(), "tool/inner/b.names", "g\n");
+    let index = index_fixture_with(repo.path(), Registry::with_adapters(vec![Box::new(Names)]));
+    let contains: Vec<String> = index
+        .dump(Dump::Edges)
+        .lines()
+        .filter(|line| line.contains(" (package)\tcontains\t"))
+        .map(str::to_owned)
+        .collect();
+    assert_eq!(
+        contains,
+        [
+            "tool/Cargo.toml (package)\tcontains\ttool/src/a.names (file)\t0",
+            "tool/inner/Cargo.toml (package)\tcontains\ttool/inner/b.names (file)\t0",
+            "tool/package.json (package)\tcontains\ttool/src/a.names (file)\t0",
+        ]
     );
 }
 

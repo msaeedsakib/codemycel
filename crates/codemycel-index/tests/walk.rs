@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use codemycel_core::config::Config;
 use codemycel_core::{
@@ -174,6 +175,83 @@ fn classification_by_extension_and_name() {
             ("src/lib.rs", FileKind::Code, Some(Language::Rust)),
             ("web/package.json", FileKind::Manifest, None),
         ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn paths_with_no_repository_path_are_left_out() {
+    let repo = tempfile::tempdir().unwrap();
+    let root = repo.path();
+    write(root, "back\\slash.rs", b"x\n");
+    write(root, "C:/drive.rs", b"x\n");
+    write(root, "ok.rs", b"x\n");
+    assert_eq!(listed(&walk(root, &Config::default())), ["ok.rs"]);
+}
+
+#[test]
+fn tracked_files_are_listed_even_when_ignored() {
+    let git = |root: &Path, args: &[&str]| {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    if Command::new("git").arg("--version").output().is_err() {
+        return;
+    }
+    let repo = tempfile::tempdir().unwrap();
+    let root = repo.path();
+    write(root, ".gitignore", b"*.log\ngen/\nnode_modules/\n");
+    for file in [
+        "keep.rs",
+        "tracked.log",
+        "untracked.log",
+        "gen/out.rs",
+        "node_modules/dep.rs",
+        "vendor/v.log",
+    ] {
+        write(root, file, b"x\n");
+    }
+    git(root, &["init", "-q"]);
+    git(root, &["add", ".gitignore", "keep.rs"]);
+    git(
+        root,
+        &[
+            "add",
+            "-f",
+            "tracked.log",
+            "gen/out.rs",
+            "node_modules/dep.rs",
+            "vendor/v.log",
+        ],
+    );
+    git(
+        root,
+        &[
+            "-c",
+            "user.name=codemycel",
+            "-c",
+            "user.email=codemycel@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-q",
+            "-m",
+            "init",
+        ],
+    );
+    let config = Config {
+        ignore: vec!["vendor/**".to_owned()],
+        ..Config::default()
+    };
+    assert_eq!(
+        listed(&walk(root, &config)),
+        [".gitignore", "gen/out.rs", "keep.rs", "tracked.log"]
     );
 }
 

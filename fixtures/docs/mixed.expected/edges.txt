@@ -12,6 +12,8 @@ docs/guide.md#guide (heading)	mentions	crate/src/lib.rs::open_store (function)	1
 docs/guide.md#guide (heading)	mentions	pkg/index.js::render (function)	1
 docs/guide.md#storage (heading)	mentions	crate/src/lib.rs (file)	1
 docs/setup.md (doc)	contains	docs/setup.md#setup (heading)	0
+docs/setup.md#setup (heading)	mentions	crate/src/lib.rs (file)	1
+docs/setup.md#setup (heading)	mentions	docs/guide.md (doc)	1
 pkg/index.js (file)	contains	pkg/index.js::render (function)	0
 pkg/index.js (file)	contains	pkg/index.js::shared (function)	0
 pkg/package.json (package)	contains	pkg/index.js (file)	0

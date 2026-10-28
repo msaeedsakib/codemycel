@@ -67,7 +67,8 @@ pub fn prepare(repo_root: &Path, files: &[FileRecord]) -> Result<Prepared, Index
 
 /// Writes package, document, and heading nodes with their `contains`, `depends_on`, and
 /// `mentions` edges. Runs after the code nodes and `name_counts` are written, in the same
-/// transaction, so mentions see the whole repository's names.
+/// transaction, so mentions see the whole repository's names. Every document is written before
+/// any mention, so a link to a document does not depend on document order.
 pub fn write(
     tx: &mut Tx<'_>,
     prepared: &Prepared,
@@ -82,6 +83,10 @@ pub fn write(
         tx.insert_nodes(&nodes)?;
         tx.insert_edges(&doc.contains)?;
         tx.insert_search_docs(&nodes.iter().map(search_doc).collect::<Vec<_>>())?;
+        counts.docs += 1;
+        counts.headings += doc.headings.len();
+    }
+    for doc in &prepared.docs {
         let mut mentions = Vec::new();
         for mention in &doc.mentions {
             if let Some(target) = sole_code_node(tx, &mention.text)? {
@@ -100,22 +105,19 @@ pub fn write(
             else {
                 continue;
             };
-            if !tx
-                .node_by_semantic_path(&target, Some(NodeKind::File))?
-                .is_empty()
-            {
-                let file = NodeRef::new(target, NodeKind::File);
-                mentions.push(syntactic(
-                    link.from.clone(),
-                    file,
-                    EdgeKind::Mentions,
-                    link.at,
-                ));
+            for kind in [NodeKind::File, NodeKind::Doc] {
+                if !tx.node_by_semantic_path(&target, Some(kind))?.is_empty() {
+                    mentions.push(syntactic(
+                        link.from.clone(),
+                        NodeRef::new(target, kind),
+                        EdgeKind::Mentions,
+                        link.at,
+                    ));
+                    break;
+                }
             }
         }
         tx.insert_edges(&mentions)?;
-        counts.docs += 1;
-        counts.headings += doc.headings.len();
         counts.mentions += mentions.len();
     }
     Ok(counts)
@@ -242,7 +244,7 @@ impl<'a> Packages<'a> {
             });
         }
         for file in code_files {
-            if let Some(owner) = self.owner(file) {
+            for owner in self.owners(file) {
                 edges.push(Edge {
                     src: owner.clone(),
                     dst: NodeRef::new(SemanticPath::for_file(file)?, NodeKind::File),
@@ -288,9 +290,10 @@ impl<'a> Packages<'a> {
         linked.then_some(node)
     }
 
-    /// The deepest package whose directory holds `file`, of any ecosystem.
-    fn owner(&self, file: &RepoPath) -> Option<&NodeRef> {
-        self.workspace
+    /// Every package, of any ecosystem, in the deepest directory that holds `file`.
+    fn owners(&self, file: &RepoPath) -> Vec<&NodeRef> {
+        let holding: Vec<_> = self
+            .workspace
             .iter()
             .filter(|(m, _)| {
                 m.directory.is_root()
@@ -299,8 +302,16 @@ impl<'a> Packages<'a> {
                         .strip_prefix(m.directory.as_str())
                         .is_some_and(|rest| rest.starts_with('/'))
             })
-            .max_by_key(|(m, _)| m.directory.as_str().len())
+            .collect();
+        let deepest = holding
+            .iter()
+            .map(|(m, _)| m.directory.as_str().len())
+            .max();
+        holding
+            .into_iter()
+            .filter(|(m, _)| Some(m.directory.as_str().len()) == deepest)
             .map(|(_, node)| node)
+            .collect()
     }
 }
 
