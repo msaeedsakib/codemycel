@@ -1,0 +1,25 @@
+# Differences between indexing this fixture through its SCIP index and through rust-analyzer.
+# Each line is a diff line as the parity test prints it; the comment above says why it differs.
+
+# rust-analyzer's SCIP output carries no symbol relationships, so SCIP has no implementers;
+# the language server finds them with textDocument/implementation.
+lsp-only	edge	crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	overrides	crates/core/src/store.rs::Store::load (method)	1
+lsp-only	edge	crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	1
+lsp-only	edge	crates/core/src/geometry.rs::<Circle as Area>::area (method)	overrides	crates/core/src/geometry.rs::Area::area (method)	1
+lsp-only	edge	crates/core/src/geometry.rs::<Circle as Area>::name (method)	overrides	crates/core/src/geometry.rs::Area::name (method)	1
+lsp-only	edge	crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	1
+lsp-only	edge	crates/core/src/render.rs::<T as Render>::render (method)	overrides	crates/core/src/render.rs::Render::render (method)	1
+
+# `Self` in an impl: the language server resolves it through the impl header to the self type,
+# a second occurrence of the edge; SCIP gives it a symbol the index never defines.
+lsp-only	edge	crates/core/src/circle.rs::Circle::new (method)	references	crates/core/src/geometry.rs::Circle (struct)	2
+scip-only	edge	crates/core/src/circle.rs::Circle::new (method)	references	crates/core/src/geometry.rs::Circle (struct)	1
+scip-only	unresolved	crates/core/src/circle.rs:4:46	type	Self	external_dependency
+lsp-only	edge	crates/core/src/lib.rs::Wrapper<T>::new (method)	references	crates/core/src/lib.rs::Wrapper (struct)	2
+scip-only	edge	crates/core/src/lib.rs::Wrapper<T>::new (method)	references	crates/core/src/lib.rs::Wrapper (struct)	1
+scip-only	unresolved	crates/core/src/lib.rs:25:28	type	Self	external_dependency
+
+# A derived `clone`: the language server's definition is the `Clone` in `#[derive(Debug, Clone)]`,
+# a macro expansion site; SCIP points at `Clone::clone` in core.
+lsp-only	unresolved	crates/core/src/circle.rs:10:30	call	clone	unmapped
+scip-only	unresolved	crates/core/src/circle.rs:10:30	call	clone	external_dependency
