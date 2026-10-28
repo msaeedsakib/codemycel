@@ -65,16 +65,21 @@ impl Sandbox {
         std::fs::write(path, text).unwrap();
     }
 
-    /// Builds the index; the exit code is 2 because the root is degraded without cargo.
     fn init(&self) {
+        self.init_at(&self.repo);
+    }
+
+    /// Indexes `dir` into this home's registry; the exit code is 2 when the root is degraded
+    /// without cargo.
+    fn init_at(&self, dir: &Path) {
         let _ = cargo_bin_cmd!("codemycel")
             .args(["init", "--no-download"])
-            .current_dir(&self.repo)
+            .current_dir(dir)
             .env("CODEMYCEL_HOME", &self.home)
             .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
             .env("PATH", &self.empty_path)
             .assert();
-        assert!(self.repo.join(".codemycel/index.db").is_file());
+        assert!(dir.join(".codemycel/index.db").is_file());
     }
 
     fn mcp(&self) -> Client {
@@ -184,6 +189,20 @@ impl Client {
             }
             assert!(Instant::now() < deadline, "last answer:\n{text}");
             std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+}
+
+impl Client {
+    /// The server's exit status, with stdin still open; panics after ten seconds.
+    fn wait(&mut self) -> std::process::ExitStatus {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                return status;
+            }
+            assert!(Instant::now() < deadline, "the server did not exit");
+            std::thread::sleep(Duration::from_millis(50));
         }
     }
 }
@@ -307,14 +326,31 @@ fn catch_up_sync_runs_on_start_and_queries_are_served_meanwhile() {
 #[test]
 fn mcp_recovers_when_index_appears() {
     let sandbox = Sandbox::new();
+    let other = sandbox.repo.with_file_name("other");
+    std::fs::create_dir_all(&other).unwrap();
+    std::fs::write(other.join("README.md"), "# Other\n").unwrap();
+    sandbox.init_at(&other);
     let mut client = sandbox.mcp();
 
     for tool in TOOLS {
         let text = client.call(tool, arguments(tool));
+        let mut lines = text.lines();
+        let first = lines.next().unwrap();
         assert!(
-            text.starts_with("no index: run codemycel init in ") && text.ends_with("repo"),
+            first.starts_with("no index: run codemycel init in ") && first.ends_with("repo"),
             "{tool}: {text}"
         );
+        assert_eq!(
+            lines.next(),
+            Some("indexed repositories:"),
+            "{tool}: {text}"
+        );
+        let listed = lines.next().unwrap();
+        assert!(
+            listed.starts_with("  ") && listed.ends_with("other"),
+            "{tool}: {text}"
+        );
+        assert_eq!(lines.next(), None, "{tool}: {text}");
     }
     assert!(!lock_exists(&sandbox.repo));
 
@@ -322,6 +358,30 @@ fn mcp_recovers_when_index_appears() {
 
     let text = client.call("search", json!({ "query": "alpha" }));
     assert!(mentions_alpha(&text), "{text}");
+}
+
+#[cfg(unix)]
+#[test]
+fn sigterm_stops_the_session_and_releases_its_lock() {
+    let sandbox = Sandbox::new();
+    sandbox.init();
+    let mut client = sandbox.mcp();
+    let owner = sandbox.repo.join(".codemycel/session.owner");
+    client.call("search", json!({ "query": "alpha" }));
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !owner.exists() {
+        assert!(Instant::now() < deadline, "the session never took its lock");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    let killed = Command::new("kill")
+        .args(["-TERM", &client.child.id().to_string()])
+        .status()
+        .unwrap();
+
+    assert!(killed.success());
+    assert_eq!(client.wait().code(), Some(0));
+    assert!(!owner.exists());
 }
 
 fn lock_exists(repo: &Path) -> bool {

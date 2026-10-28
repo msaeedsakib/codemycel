@@ -27,7 +27,7 @@ impl ServerHandler for Codemycel {
     }
 }
 
-/// Serves the MCP tools for the repository at `repo_root` over stdio until stdin closes, then
+/// Serves the MCP tools for the repository at `repo_root` over stdio until stdin closes or SIGTERM arrives, then
 /// stops the session's watcher and servers and releases its locks.
 pub fn serve(repo_root: &Path, options: SessionOptions) -> std::io::Result<()> {
     let session = Arc::new(Session::new(repo_root, options));
@@ -47,15 +47,36 @@ async fn run(session: Arc<Session>) -> std::io::Result<()> {
         tool_router: Codemycel::tool_router(),
     };
     let result = match server.serve(rmcp::transport::stdio_pipes()).await {
-        Ok(running) => running
-            .waiting()
-            .await
-            .map(drop)
-            .map_err(std::io::Error::other),
+        Ok(running) => {
+            let cancel = running.cancellation_token();
+            tokio::select! {
+                quit = running.waiting() => quit.map(drop).map_err(std::io::Error::other),
+                () = terminated() => {
+                    cancel.cancel();
+                    Ok(())
+                }
+            }
+        }
         Err(error) => Err(std::io::Error::other(error)),
     };
     poll.abort();
     result
+}
+
+/// Resolves on SIGTERM (Ctrl-C on Windows); never, if the handler cannot be installed.
+async fn terminated() {
+    #[cfg(unix)]
+    if let Ok(mut terminate) =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+    {
+        terminate.recv().await;
+        return;
+    }
+    #[cfg(windows)]
+    if tokio::signal::ctrl_c().await.is_ok() {
+        return;
+    }
+    std::future::pending::<()>().await;
 }
 
 /// Starts the session as soon as the index is ready, without waiting for a tool call.
