@@ -4,7 +4,12 @@ mod harness;
 
 use std::path::Path;
 
-use harness::{Dump, FixtureIndex, fixture, index_fixture};
+use codemycel_core::Language;
+use codemycel_core::store::StoreRead;
+use codemycel_index::Registry;
+use harness::{
+    Dump, FixtureIndex, fixture, fixture_copy, index_fixture, index_fixture_full, local_provisioner,
+};
 
 const ALL: [Dump; 4] = [
     Dump::Nodes,
@@ -62,6 +67,28 @@ fn dumps_identical_across_two_runs() {
         let dir = fixture(name);
         assert_same(&index_fixture(&dir), &index_fixture(&dir), &ALL);
     }
+}
+
+#[test]
+#[ignore = "communities are computed once the detector lands"]
+fn communities_identical_across_runs_and_paths() {
+    let registry = || Registry::default();
+    let Some(provisioner) = local_provisioner(registry().server_for(Language::Rust).unwrap())
+    else {
+        return;
+    };
+    let (_first, original) = fixture_copy(&fixture("rust/workspace-basic"));
+    let temp = tempfile::tempdir().unwrap();
+    let copy = temp.path().join("with space").join("тест").join("repo");
+    copy_tree(&original, &copy, &|_, bytes| bytes);
+
+    let a = index_fixture_full(&original, registry(), &provisioner);
+    let communities = a.store.dump_communities().unwrap();
+    assert!(!communities.is_empty(), "the fixture forms no community");
+    let again = index_fixture_full(&original, registry(), &provisioner);
+    let moved = index_fixture_full(&copy, registry(), &provisioner);
+    assert_eq!(communities, again.store.dump_communities().unwrap());
+    assert_eq!(communities, moved.store.dump_communities().unwrap());
 }
 
 #[test]
