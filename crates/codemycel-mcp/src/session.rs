@@ -5,8 +5,8 @@ use codemycel_core::config::paths::REPO_DIR_NAME;
 use codemycel_core::query::{Answer, Budget, QueryEngine, QueryError, TextFormatter};
 use codemycel_core::store::{Store, StoreError, StoreRead, meta};
 use codemycel_index::{
-    INDEX_FILE_NAME, Lock, LockKind, NoteRequest, NoteTool, Registry, SessionLoop, SessionOptions,
-    SessionState,
+    INDEX_FILE_NAME, Lock, LockKind, NoteRequest, NoteTool, Registry, RepoRegistry, SessionLoop,
+    SessionOptions, SessionState,
 };
 
 /// The repository the MCP process serves. Until its index exists and has completed a sync,
@@ -110,14 +110,28 @@ impl Session {
                 })
             }
             Probe::Unindexed => Err(match self.state() {
-                None | Some(SessionState::ReadOnly | SessionState::Stopped) => format!(
-                    "no index: run codemycel init in {}",
-                    self.repo_root.display()
-                ),
+                None | Some(SessionState::ReadOnly | SessionState::Stopped) => self.no_index(),
                 Some(_) => self.rebuilding(),
             }),
             Probe::Failed(error) => Err(format!("error: reading the index: {error}")),
         }
+    }
+
+    /// The `no index` line, then the repositories indexed elsewhere on this machine, listed for
+    /// information only.
+    fn no_index(&self) -> String {
+        let mut text = format!(
+            "no index: run codemycel init in {}",
+            self.repo_root.display()
+        );
+        let registry = RepoRegistry::load(&self.options.home);
+        if !registry.entries().is_empty() {
+            text.push_str("\nindexed repositories:");
+            for entry in registry.entries() {
+                text.push_str(&format!("\n  {}", entry.path.display()));
+            }
+        }
+        text
     }
 
     fn rebuilding(&self) -> String {
