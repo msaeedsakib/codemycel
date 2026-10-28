@@ -129,7 +129,7 @@ pub fn run(
         } else {
             let server = |root: &Root| registry.server_for(root.language).map(|s| s.name());
             let scip_covered = &scip_covered;
-            let others: Vec<&FileView> = per_root
+            let others: Vec<RepoPath> = per_root
                 .iter()
                 .filter(|(other, _)| server(other).is_some() && server(other) == server(root))
                 .flat_map(|(other, files)| {
@@ -137,7 +137,7 @@ pub fn run(
                         .iter()
                         .filter(move |file| *other != root || scip_covered.contains(*file))
                 })
-                .filter_map(|file| view.file(file))
+                .cloned()
                 .collect();
             let lsp = enrich_root(
                 repo_root, config, root, &lsp_files, &others, &view, registry, sources,
@@ -201,7 +201,7 @@ fn enrich_root(
     config: &Config,
     root: &Root,
     files: &[RepoPath],
-    others: &[&FileView],
+    others: &[RepoPath],
     view: &IndexView,
     registry: &Registry,
     sources: &Sources<'_>,
@@ -260,10 +260,11 @@ fn enrich_root(
         Err(reason) => return degraded(reason, Some(info)),
     };
     let mut report = resolver.enrich_files(files);
-    for file in others {
-        report
-            .edges
-            .extend(implementer_edges(&resolver, file, VerifiedBy::Lsp));
+    if report.degraded.is_none() {
+        let found = resolver.enrich_implementers(others);
+        report.degraded = found.degraded;
+        report.edges.extend(found.edges);
+        report.partially_enriched.extend(found.partially_enriched);
     }
     resolver.shutdown();
     if let Some(reason) = report.degraded {

@@ -55,6 +55,14 @@ impl<'a> LspResolver<'a> {
         }
     }
 
+    /// See [`Enricher::enrich_implementers`].
+    pub fn enrich_implementers(&self, files: &[RepoPath]) -> EnrichReport {
+        match &self.enricher {
+            Some(enricher) => self.runtime.block_on(enricher.enrich_implementers(files)),
+            None => EnrichReport::default(),
+        }
+    }
+
     /// `shutdown` and `exit`; dropping the resolver instead kills the server.
     pub fn shutdown(mut self) {
         if let Some(enricher) = self.enricher.take() {

@@ -49,6 +49,7 @@ const FILE: &str = "src/lib.rs";
 
 struct Fixture {
     dir: TempDir,
+    text: &'static str,
     view: IndexView,
     files: Vec<RepoPath>,
     language: RustAdapter,
@@ -56,20 +57,25 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with(LIB)
+    }
+
+    fn with(text: &'static str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let language = RustAdapter::new();
         let path = RepoPath::new(FILE).unwrap();
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
-        std::fs::write(dir.path().join(FILE), LIB).unwrap();
+        std::fs::write(dir.path().join(FILE), text).unwrap();
         std::fs::write(dir.path().join("tsconfig.json"), "{}").unwrap();
-        let parsed = language.parse(&path, LIB.as_bytes()).unwrap();
+        let parsed = language.parse(&path, text.as_bytes()).unwrap();
         let mut view = IndexView::default();
         view.insert(
             path.clone(),
-            FileView::new(&path, LIB.to_owned(), parsed).unwrap(),
+            FileView::new(&path, text.to_owned(), parsed).unwrap(),
         );
         Self {
             dir,
+            text,
             view,
             files: vec![path],
             language,
@@ -99,14 +105,15 @@ impl Fixture {
     }
 
     fn position(&self, candidate: &Candidate) -> Position {
-        LineIndex::new(LIB).to_lsp(candidate.at).unwrap()
+        LineIndex::new(self.text).to_lsp(candidate.at).unwrap()
     }
 
     /// The range of the first `needle` after the first `anchor`.
     fn range(&self, anchor: &str, needle: &str) -> Value {
+        let text = self.text;
         let start =
-            LIB.find(anchor).unwrap() + LIB[LIB.find(anchor).unwrap()..].find(needle).unwrap();
-        let index = LineIndex::new(LIB);
+            text.find(anchor).unwrap() + text[text.find(anchor).unwrap()..].find(needle).unwrap();
+        let index = LineIndex::new(text);
         let at = |offset: usize| index.position(u32::try_from(offset).unwrap()).unwrap();
         json!({"start": at(start), "end": at(start + needle.len())})
     }
@@ -603,4 +610,32 @@ async fn partial_enrichment_flag_set_after_second_failure() {
     );
     assert_eq!(reason_of(&report, &retried), None, "the retry succeeded");
     assert!(report.partially_enriched.contains(&fixture.files[0]));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn implementer_pass_flags_trait_file_after_second_failure() {
+    let fixture = Fixture::new();
+    let shape_at: Position =
+        serde_json::from_value(fixture.range("pub trait ", "Shape")["start"].clone()).unwrap();
+    let mut fail_twice = respond(
+        "textDocument/implementation",
+        shape_at,
+        json!([fixture.location("pub struct ", "Circle")]),
+    );
+    fail_twice["fail_times"] = json!(2);
+    let adapter = FakeAdapter::new(&fixture.scenario(json!({"responses": [fail_twice]})));
+    let enricher = fixture
+        .start(&adapter, fake_lsp(), EnrichOptions::default())
+        .await
+        .unwrap();
+    let report = enricher.enrich_implementers(&fixture.files).await;
+    enricher.shutdown().await;
+    assert_eq!(report.degraded, None);
+    assert!(report.partially_enriched.contains(&fixture.files[0]));
+    assert!(!has_edge(
+        &report,
+        &node("src/lib.rs::Circle", NodeKind::Struct),
+        EdgeKind::Implements,
+        &node("src/lib.rs::Shape", NodeKind::Trait)
+    ));
 }

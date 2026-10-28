@@ -283,6 +283,54 @@ fn implementer_in_another_root_is_written_by_its_own_root() {
 }
 
 #[test]
+fn crash_in_implementer_pass_degrades_the_root() {
+    let repo = Repo::new(&[
+        (
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\n",
+        ),
+        ("a/src/lib.rs", "pub trait T {\n    fn go(&self);\n}\n"),
+        (
+            "b/Cargo.toml",
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\n",
+        ),
+        ("b/src/lib.rs", "pub struct S;\n"),
+    ]);
+    let scenario_path = repo.scenario(json!([]));
+    let mut scenario: Value =
+        serde_json::from_str(&std::fs::read_to_string(&scenario_path).unwrap()).unwrap();
+    scenario["crash_after"] = json!([null, 0, 0]);
+    scenario["state_file"] = json!(repo.scratch.path().join("launches"));
+    std::fs::write(&scenario_path, scenario.to_string()).unwrap();
+    let adapter = FakeAdapter::new(&scenario_path);
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), None);
+    let status = |root: &str| {
+        run.report
+            .statuses
+            .iter()
+            .find(|(r, _)| r.path.as_str() == root)
+            .map(|(_, status)| status.clone())
+            .unwrap()
+    };
+    assert_eq!(status("a").degraded, None);
+    assert_eq!(status("b").degraded, Some(DegradeReason::Crashed));
+    assert_eq!(status("b").coverage, Coverage::None);
+    let launches = repo.launches();
+    let b_launches: Vec<_> = launches
+        .iter()
+        .filter(|(root, _)| root.ends_with("/b"))
+        .collect();
+    assert_eq!(b_launches.len(), 2, "one start and one restart");
+    assert!(b_launches.iter().all(|(_, received)| {
+        received.iter().any(|message| {
+            message["method"] == "textDocument/implementation"
+                && message["params"]["textDocument"]["uri"] == repo.uri("a/src/lib.rs")
+        })
+    }));
+}
+
+#[test]
 fn scip_impl_block_yields_implements_and_overrides() {
     let repo = Repo::new(&[
         ("Cargo.toml", MANIFEST),

@@ -217,9 +217,7 @@ impl<'a> Enricher<'a> {
                     next += 1;
                 }
                 Err(Failure::Crashed) => {
-                    let restart_allowed = !self.restarted.swap(true, Ordering::SeqCst);
-                    if !restart_allowed || self.session.restart(self.probe.as_ref()).await.is_err()
-                    {
+                    if !self.restart_once().await {
                         return self.degraded(&sorted, DegradeReason::Crashed);
                     }
                 }
@@ -228,6 +226,46 @@ impl<'a> Enricher<'a> {
         report.config_diagnostics = self.session.config_diagnostics();
         report.sort();
         report
+    }
+
+    /// `implements` and `overrides` edges for the traits and interfaces of `files`, files this
+    /// server answers for but does not enrich. A crash uses the same single restart as
+    /// `enrich_files`; once it is spent or fails, the report holds only `degraded`.
+    pub async fn enrich_implementers(&self, files: &[RepoPath]) -> EnrichReport {
+        let mut sorted = files.to_vec();
+        sorted.sort();
+        let mut report = EnrichReport::default();
+        let mut next = 0;
+        while let Some(file) = sorted.get(next) {
+            match self.implementers_in_file(file).await {
+                Ok((edges, partial)) => {
+                    report.edges.extend(edges);
+                    if partial {
+                        report.partially_enriched.insert(file.clone());
+                    }
+                    next += 1;
+                }
+                Err(Failure::Failed) => {
+                    report.partially_enriched.insert(file.clone());
+                    next += 1;
+                }
+                Err(Failure::Crashed) => {
+                    if !self.restart_once().await {
+                        return EnrichReport {
+                            degraded: Some(DegradeReason::Crashed),
+                            ..EnrichReport::default()
+                        };
+                    }
+                }
+            }
+        }
+        report.sort();
+        report
+    }
+
+    async fn restart_once(&self) -> bool {
+        let allowed = !self.restarted.swap(true, Ordering::SeqCst);
+        allowed && self.session.restart(self.probe.as_ref()).await.is_ok()
     }
 
     fn degraded(&self, files: &[RepoPath], reason: DegradeReason) -> EnrichReport {
@@ -256,15 +294,37 @@ impl<'a> Enricher<'a> {
         let Some(view) = self.view.file(file) else {
             return Ok(FileOutcome::default());
         };
+        let (client, uri) = self.open_file(file, view)?;
+        let outcome = self.enrich_open_file(&client, &uri, view).await;
+        let _ = client.did_close(&uri);
+        outcome
+    }
+
+    async fn implementers_in_file(&self, file: &RepoPath) -> Result<(Vec<Edge>, bool), Failure> {
+        let Some(view) = self.view.file(file) else {
+            return Ok((Vec::new(), false));
+        };
+        if !view.nodes.iter().any(|n| is_parent(n.kind)) {
+            return Ok((Vec::new(), false));
+        }
+        let (client, uri) = self.open_file(file, view)?;
+        let found = self.implementations_in(&client, &uri, view).await;
+        let _ = client.did_close(&uri);
+        found
+    }
+
+    fn open_file(
+        &self,
+        file: &RepoPath,
+        view: &FileView,
+    ) -> Result<(std::sync::Arc<LspClient>, Uri), Failure> {
         let client = self.session.client().ok_or(Failure::Crashed)?;
         let uri = self.uri(file).map_err(|_| Failure::Failed)?;
         let language_id = self.session.adapter().language_id(extension(file));
         client
             .did_open(&uri, language_id, view.index.text())
             .map_err(|_| Failure::Crashed)?;
-        let outcome = self.enrich_open_file(&client, &uri, view).await;
-        let _ = client.did_close(&uri);
-        outcome
+        Ok((client, uri))
     }
 
     async fn enrich_open_file(
@@ -353,10 +413,24 @@ impl<'a> Enricher<'a> {
                 reason,
             });
         }
+        let (edges, partial) = self.implementations_in(client, uri, view).await?;
+        outcome.edges.extend(edges);
+        outcome.partial |= partial;
+        Ok(outcome)
+    }
+
+    /// `implementations` for every trait and interface of an open file and each of its methods;
+    /// the flag is set when a request failed twice.
+    async fn implementations_in(
+        &self,
+        client: &LspClient,
+        uri: &Uri,
+        view: &FileView,
+    ) -> Result<(Vec<Edge>, bool), Failure> {
         let parents: Vec<(&Node, Option<&Node>)> = view
             .nodes
             .iter()
-            .filter(|n| matches!(n.kind, NodeKind::Trait | NodeKind::Interface))
+            .filter(|n| is_parent(n.kind))
             .flat_map(|parent| {
                 let methods = view
                     .members(&parent.node_ref())
@@ -373,14 +447,16 @@ impl<'a> Enricher<'a> {
                 .map(|(parent, method)| self.implementations(client, uri, view, parent, *method)),
         )
         .await;
-        for edges in found {
-            match edges {
-                Ok(edges) => outcome.edges.extend(edges),
+        let mut edges = Vec::new();
+        let mut partial = false;
+        for found in found {
+            match found {
+                Ok(found) => edges.extend(found),
                 Err(Failure::Crashed) => return Err(Failure::Crashed),
-                Err(Failure::Failed) => outcome.partial = true,
+                Err(Failure::Failed) => partial = true,
             }
         }
-        Ok(outcome)
+        Ok((edges, partial))
     }
 
     /// Callees of `node` that map to functions or methods, with the call sites in its file.
@@ -735,6 +811,10 @@ fn lsp_edge(src: NodeRef, dst: NodeRef, kind: EdgeKind) -> Edge {
 
 fn is_callable(kind: NodeKind) -> bool {
     matches!(kind, NodeKind::Function | NodeKind::Method)
+}
+
+fn is_parent(kind: NodeKind) -> bool {
+    matches!(kind, NodeKind::Trait | NodeKind::Interface)
 }
 
 fn is_implementer(kind: NodeKind) -> bool {
