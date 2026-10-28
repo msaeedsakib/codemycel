@@ -1,5 +1,6 @@
 import { Circle, Square, double, type Shape } from "@fixture/core";
 import * as core from "@fixture/core";
+import "./setup";
 
 export class Gallery {
   private readonly shapes: Shape[] = [];
