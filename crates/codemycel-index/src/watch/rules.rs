@@ -7,6 +7,8 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use crate::IndexError;
 use crate::walk::{ALWAYS_IGNORED, config_matcher, tracked_ignored};
 
+const GIT_EXCLUDE: &str = ".git/info/exclude";
+
 /// The walk's ignore rules, asked about one path at a time: always-ignored directories, the
 /// config globs, and every `.gitignore` inside the repository with `.git/info/exclude`, except
 /// for files git tracks although a rule matches them.
@@ -50,12 +52,18 @@ impl Rules {
         if relative.file_name() == Some(OsStr::new(".gitignore")) {
             self.gitignores
                 .remove(relative.parent().unwrap_or(Path::new("")));
-        } else if relative == Path::new(".git/info/exclude") {
+        } else if relative == Path::new(GIT_EXCLUDE) {
             self.gitignores.remove(Path::new(""));
         }
     }
 
-    pub(super) fn ignored(&mut self, relative: &Path) -> bool {
+    /// Whether an event at `relative` can change what the walk lists: a path the rules keep, or
+    /// `.git/info/exclude`, which lives in an always-ignored directory but feeds the rules.
+    pub(super) fn watched(&mut self, relative: &Path) -> bool {
+        relative == Path::new(GIT_EXCLUDE) || !self.ignored(relative)
+    }
+
+    fn ignored(&mut self, relative: &Path) -> bool {
         let parts: Vec<&OsStr> = relative
             .components()
             .filter_map(|component| match component {
