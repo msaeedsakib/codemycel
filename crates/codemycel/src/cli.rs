@@ -103,6 +103,9 @@ pub struct SetupArgs {
     /// Remove codemycel's entries instead of writing them
     #[arg(long)]
     pub remove: bool,
+    /// Harnesses to act on without asking: claude-code, codex, cursor, gemini, opencode
+    #[arg(long, value_delimiter = ',', value_name = "IDS")]
+    pub harness: Vec<String>,
 }
 
 #[derive(Debug, Args)]
