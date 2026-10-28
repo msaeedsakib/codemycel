@@ -210,7 +210,9 @@ impl<'a> Enricher<'a> {
                 }
                 Err(Failure::Failed) => {
                     report.partially_enriched.insert(file.clone());
-                    report.unresolved.extend(self.unavailable(&[file.clone()]));
+                    report
+                        .unresolved
+                        .extend(self.unavailable(std::slice::from_ref(file)));
                     next += 1;
                 }
                 Err(Failure::Crashed) => {

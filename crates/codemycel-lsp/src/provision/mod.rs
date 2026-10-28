@@ -122,7 +122,7 @@ impl Provisioner {
         let found = configured
             .and_then(|path| try_candidate(path, ServerSource::Config))
             .or_else(|| {
-                self.from_toolchain(adapter)
+                self.toolchain_binary(adapter)
                     .and_then(|path| try_candidate(path, ServerSource::Toolchain))
             })
             .or_else(|| {
@@ -163,7 +163,7 @@ impl Provisioner {
 
     /// The toolchain's answer, installing the server through it once when the toolchain is
     /// present but the server is not.
-    fn from_toolchain(&self, adapter: &dyn ServerAdapter) -> Option<PathBuf> {
+    fn toolchain_binary(&self, adapter: &dyn ServerAdapter) -> Option<PathBuf> {
         let toolchain = adapter.toolchain()?;
         let program = toolchain.locate.first()?;
         lookup::find_on_path(program, self.search_path())?;
