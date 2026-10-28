@@ -247,6 +247,24 @@ pub trait StoreRead {
         edges_where(self.conn(), "e.dst", node, kinds, "s.semantic_path, s.kind")
     }
 
+    /// How many edges of `kind` start at `node`.
+    fn count_edges_from(&self, node: NodeId, kind: EdgeKind) -> Result<u64> {
+        let count: i64 = self
+            .conn()
+            .prepare_cached("SELECT count(*) FROM edges WHERE src = ?1 AND kind = ?2")?
+            .query_row(params![node.0, kind], |row| row.get(0))?;
+        to_u64(count)
+    }
+
+    /// How many edges of `kind` end at `node`.
+    fn count_edges_to(&self, node: NodeId, kind: EdgeKind) -> Result<u64> {
+        let count: i64 = self
+            .conn()
+            .prepare_cached("SELECT count(*) FROM edges WHERE dst = ?1 AND kind = ?2")?
+            .query_row(params![node.0, kind], |row| row.get(0))?;
+        to_u64(count)
+    }
+
     fn unresolved_for_file(&self, path: &RepoPath) -> Result<Vec<StoredUnresolved>> {
         let sql = format!("{UNRESOLVED_SELECT} WHERE f.path = ?1 ORDER BY u.line, u.col, u.text");
         let mut stmt = self.conn().prepare_cached(&sql)?;
