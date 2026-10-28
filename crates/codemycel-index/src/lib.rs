@@ -7,7 +7,7 @@ pub mod roots;
 pub mod walk;
 
 pub use error::IndexError;
-pub use pipeline::{Pipeline, PipelineReport};
+pub use pipeline::{Pipeline, PipelineReport, Sources};
 pub use registry::Registry;
 pub use roots::RootDetector;
 pub use walk::Walker;

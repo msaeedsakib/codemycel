@@ -22,16 +22,28 @@ codemycel-ui = { path = "crates/codemycel-ui" }
 anyhow = "1.0.104"
 blake3 = { version = "1.8.7", features = ["serde"] }
 clap = { version = "4.6.7", features = ["derive"] }
+flate2 = "1.1.10"
+futures = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
 globset = "0.4.21"
 ignore = "0.4.34"
+lsp-types = "0.97.0"
+nix = { version = "0.31.3", features = ["signal"] }
+protobuf = "=3.7.2"
 rayon = "1.12.0"
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
+scip = "0.10.0"
 serde_json = "1"
+sha2 = "0.11.1"
+tar = "0.4.46"
 thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
 toml = "1.1.8"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }
+url = "2.5.8"
+zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2"] }
 tree-sitter = "0.27.1"
 tree-sitter-javascript = "0.25.0"
 tree-sitter-md = { version = "0.5.4", features = ["parser"] }

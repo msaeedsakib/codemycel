@@ -4,9 +4,11 @@
 
 use std::path::{Path, PathBuf};
 
+use codemycel_core::ServerAdapter;
 use codemycel_core::config::Config;
 use codemycel_core::store::{Store, StoreRead};
-use codemycel_index::{Pipeline, PipelineReport, Registry};
+use codemycel_index::{Pipeline, PipelineReport, Registry, Sources};
+use codemycel_lsp::{EnrichOptions, Provisioner};
 use tempfile::TempDir;
 
 #[derive(Clone, Copy, Debug)]
@@ -51,6 +53,111 @@ pub fn index_fixture_with(dir: &Path, registry: Registry) -> FixtureIndex {
         _dir: temp,
         store,
         report,
+    }
+}
+
+/// A copy of a fixture in a temporary directory, for runs whose servers write into the tree
+/// (rust-analyzer's `Cargo.lock` and `target/`). Diff its dumps against the original's
+/// expected files.
+pub fn fixture_copy(source: &Path) -> (TempDir, PathBuf) {
+    fn copy_dir(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let dest = to.join(entry.file_name());
+            let kind = entry.file_type().unwrap();
+            if kind.is_symlink() {
+                let target = std::fs::read_link(entry.path()).unwrap();
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(target, dest).unwrap();
+                #[cfg(windows)]
+                std::os::windows::fs::symlink_dir(target, dest).unwrap();
+            } else if kind.is_dir() {
+                copy_dir(&entry.path(), &dest);
+            } else {
+                std::fs::copy(entry.path(), dest).unwrap();
+            }
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let copy = temp.path().join(source.file_name().unwrap());
+    copy_dir(source, &copy);
+    #[cfg(windows)]
+    restore_links(&copy);
+    (temp, copy)
+}
+
+/// Fixture symlinks a Windows checkout without symlink support holds as plain files of their
+/// target, recreated as directory junctions.
+#[cfg(windows)]
+fn restore_links(copy: &Path) {
+    const LINKS: [&str; 1] = ["packages/app/node_modules/@fixture/core"];
+    for relative in LINKS {
+        let link = copy.join(relative);
+        if !link.symlink_metadata().is_ok_and(|m| m.is_file()) {
+            continue;
+        }
+        let target = std::fs::read_to_string(&link).unwrap();
+        std::fs::remove_file(&link).unwrap();
+        let mut resolved = link.parent().unwrap().to_owned();
+        for part in target.trim().split(['/', '\\']) {
+            match part {
+                "" | "." => {}
+                ".." => {
+                    resolved.pop();
+                }
+                name => resolved.push(name),
+            }
+        }
+        let status = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(&link)
+            .arg(&resolved)
+            .status()
+            .unwrap();
+        assert!(status.success(), "mklink /J failed for {}", link.display());
+    }
+}
+
+/// `Pipeline::run` with `registry`'s servers, found by `provisioner`, and no SCIP index.
+pub fn index_fixture_full(
+    dir: &Path,
+    registry: Registry,
+    provisioner: &Provisioner,
+) -> FixtureIndex {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir(&home).unwrap();
+    let config = Config::load_with_home(dir, &home).unwrap();
+    let mut store = Store::create(&temp.path().join("index.db")).unwrap();
+    let sources = Sources {
+        provisioner,
+        scip: None,
+        options: EnrichOptions::default(),
+    };
+    let report = Pipeline::run(dir, &config, &mut store, &registry, &sources).unwrap();
+    FixtureIndex {
+        _dir: temp,
+        store,
+        report,
+    }
+}
+
+/// A provisioner over the machine's real servers (config, toolchain, `PATH`, and the
+/// codemycel cache; never a download), or `None` with a printed notice when `server` is not
+/// installed. With `CODEMYCEL_REQUIRE_SERVERS=1`, as CI sets it, a missing server fails instead.
+pub fn local_provisioner(server: &dyn ServerAdapter) -> Option<Provisioner> {
+    let home = codemycel_core::config::home_dir().unwrap();
+    let provisioner = Provisioner::new(&Config::default(), home, false);
+    match provisioner.locate(server) {
+        Ok(_) => Some(provisioner),
+        Err(error) if std::env::var_os("CODEMYCEL_REQUIRE_SERVERS").is_some_and(|v| v == "1") => {
+            panic!("{} is required: {error}", server.name())
+        }
+        Err(error) => {
+            eprintln!("skipping: no local {}: {error}", server.name());
+            None
+        }
     }
 }
 

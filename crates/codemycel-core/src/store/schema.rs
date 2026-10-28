@@ -1,5 +1,5 @@
 /// Bumped whenever the DDL or any stored text format changes; a mismatch on open means rebuild.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 pub(crate) const DDL: &str = r#"
 CREATE TABLE meta (
@@ -30,7 +30,8 @@ CREATE TABLE files (
     kind TEXT NOT NULL,
     parsed INTEGER NOT NULL,
     skip_reason TEXT,
-    scip_covered INTEGER NOT NULL
+    scip_covered INTEGER NOT NULL,
+    partially_enriched INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE nodes (

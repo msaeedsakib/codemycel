@@ -10,5 +10,15 @@ publish.workspace = true
 [dependencies]
 codemycel-core.workspace = true
 
+blake3.workspace = true
+protobuf.workspace = true
+scip.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+codemycel-parse.workspace = true
+tempfile.workspace = true
+
 [lints]
 workspace = true

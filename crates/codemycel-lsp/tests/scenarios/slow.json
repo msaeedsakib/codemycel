@@ -1,0 +1,5 @@
+{
+  "responses": [
+    {"method": "textDocument/definition", "delay_ms": 300, "result": []}
+  ]
+}

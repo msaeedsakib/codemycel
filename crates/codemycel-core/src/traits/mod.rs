@@ -5,7 +5,7 @@ mod server_adapter;
 
 pub use language_adapter::{AdapterError, LanguageAdapter};
 pub use ranker::{Ranker, ScoredHit, SearchHit};
-pub use resolver::Resolver;
+pub use resolver::{Resolver, ResolverSource, SourceFile};
 pub use server_adapter::{Arch, Os, ReadinessStrategy, ServerAdapter, Toolchain};
 
 #[cfg(test)]
@@ -73,6 +73,9 @@ mod tests {
         fn pinned_version(&self) -> &'static str {
             "0"
         }
+        fn binary_name(&self) -> &'static str {
+            "dummy"
+        }
         fn toolchain(&self) -> Option<Toolchain> {
             None
         }
@@ -90,6 +93,9 @@ mod tests {
         }
         fn launch_args(&self) -> &'static [&'static str] {
             &[]
+        }
+        fn language_id(&self, _: &str) -> &'static str {
+            "rust"
         }
         fn initialization_options(&self, _: &ServerConfig) -> serde_json::Value {
             serde_json::Value::Null

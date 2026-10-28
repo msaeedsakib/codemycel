@@ -1,0 +1,20 @@
+# Differences between indexing this fixture through its SCIP index and through rust-analyzer.
+# Each line is a diff line as the parity test prints it; the comment above says why it differs.
+
+# A trait impl's `implements` edge: SCIP builds it from the impl header and sites it at the
+# trait clause; the language server finds it with textDocument/implementation, whose answers
+# carry no sites.
+lsp-only	edge	crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	0
+scip-only	edge	crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	1
+lsp-only	edge	crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	0
+scip-only	edge	crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	1
+
+# `Self` in an impl: the language server resolves it through the impl header to the self type,
+# a second occurrence of the edge; SCIP gives it the impl block's symbol, which the index never
+# defines, so it is unmapped.
+lsp-only	edge	crates/core/src/circle.rs::Circle::new (method)	references	crates/core/src/geometry.rs::Circle (struct)	2
+scip-only	edge	crates/core/src/circle.rs::Circle::new (method)	references	crates/core/src/geometry.rs::Circle (struct)	1
+scip-only	unresolved	crates/core/src/circle.rs:4:46	type	Self	unmapped
+lsp-only	edge	crates/core/src/lib.rs::Wrapper<T>::new (method)	references	crates/core/src/lib.rs::Wrapper (struct)	2
+scip-only	edge	crates/core/src/lib.rs::Wrapper<T>::new (method)	references	crates/core/src/lib.rs::Wrapper (struct)	1
+scip-only	unresolved	crates/core/src/lib.rs:25:28	type	Self	unmapped

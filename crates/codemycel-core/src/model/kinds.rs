@@ -124,6 +124,38 @@ string_enum!(
     }
 );
 
+string_enum!(
+    /// Why a root's files got no cross-file edges from a language server.
+    DegradeReason {
+        NoServer => "no_server",
+        NoCargo => "no_cargo",
+        StartFailed => "start_failed",
+        NotReady => "not_ready",
+        Crashed => "crashed",
+    }
+);
+
+string_enum!(
+    /// Where the provisioner found a language server binary, in lookup order.
+    ServerSource {
+        Config => "config",
+        Toolchain => "toolchain",
+        Path => "path",
+        Cache => "cache",
+        Download => "download",
+    }
+);
+
+string_enum!(
+    /// Which verified sources produced a root's edges in the last run.
+    Coverage {
+        Lsp => "lsp",
+        Scip => "scip",
+        ScipAndLsp => "scip+lsp",
+        None => "none",
+    }
+);
+
 string_enum!(FileKind {
     Code => "code",
     Doc => "doc",

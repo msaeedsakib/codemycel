@@ -7,7 +7,7 @@ use super::read::{file_key, node_key};
 use super::{StoreError, Tx};
 use crate::{
     Edge, FileId, FileRecord, ImplRecord, Node, NodeId, Occurrence, Package, RepoPath, Root,
-    RootId, SearchDoc, Unresolved,
+    RootId, RootStatus, SearchDoc, Unresolved,
 };
 
 impl Tx<'_> {
@@ -32,6 +32,47 @@ impl Tx<'_> {
         Ok(RootId(id))
     }
 
+    pub fn set_root_status(&mut self, root: RootId, status: &RootStatus) -> Result<()> {
+        let server = status.server.as_ref();
+        self.tx.execute(
+            "UPDATE roots SET server_name = ?2, server_version = ?3, server_source = ?4,
+                              coverage = ?5, degraded_reason = ?6, config_diagnostics = ?7
+             WHERE id = ?1",
+            params![
+                root.0,
+                server.map(|s| &s.name),
+                server.map(|s| &s.version),
+                server.map(|s| s.source),
+                status.coverage,
+                status.degraded,
+                serde_json::to_string(&status.config_diagnostics)?,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Marks a file whose server requests failed twice; `upsert_file` clears the mark.
+    pub fn set_partially_enriched(&mut self, path: &RepoPath) -> Result<()> {
+        self.tx.execute(
+            "UPDATE files SET partially_enriched = 1 WHERE path = ?1",
+            params![path],
+        )?;
+        Ok(())
+    }
+
+    /// Recomputes every node's `unresolved_out` and `external_out` from the unresolved table.
+    pub fn refresh_unresolved_counts(&mut self) -> Result<()> {
+        self.tx.execute(
+            "UPDATE nodes SET
+                unresolved_out = (SELECT count(*) FROM unresolved u WHERE u.node_id = nodes.id
+                    AND u.reason IN ('no_definition', 'server_unavailable', 'unmapped')),
+                external_out = (SELECT count(*) FROM unresolved u WHERE u.node_id = nodes.id
+                    AND u.reason IN ('external_dependency', 'unindexed_file'))",
+            [],
+        )?;
+        Ok(())
+    }
+
     /// Inserts or updates the row for `file.path`, keeping its id and everything that hangs off it.
     /// A changed root moves the file's nodes and their outgoing edges to the new root.
     pub fn upsert_file(&mut self, file: &FileRecord) -> Result<FileId> {
@@ -43,7 +84,8 @@ impl Tx<'_> {
              ON CONFLICT (path) DO UPDATE SET
                 root_id = excluded.root_id, hash = excluded.hash, size = excluded.size,
                 language = excluded.language, kind = excluded.kind, parsed = excluded.parsed,
-                skip_reason = excluded.skip_reason, scip_covered = excluded.scip_covered
+                skip_reason = excluded.skip_reason, scip_covered = excluded.scip_covered,
+                partially_enriched = 0
              RETURNING id",
             params![
                 file.path,

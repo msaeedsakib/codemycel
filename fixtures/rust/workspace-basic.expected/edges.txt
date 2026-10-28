@@ -8,9 +8,33 @@ crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::memory (module)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::rebinds (function)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::shadowed (function)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::uses_global (function)	0
+crates/cli/src/main.rs (file)	imports	crates/core/src/geometry.rs (file)	6
+crates/cli/src/main.rs (file)	imports	crates/core/src/lib.rs (file)	3
+crates/cli/src/main.rs::config (function)	references	crates/core/src/lib.rs::MAX_SHAPES (constant)	1
+crates/cli/src/main.rs::main (function)	calls	crates/cli/src/main.rs::rebinds (function)	1
+crates/cli/src/main.rs::main (function)	calls	crates/cli/src/main.rs::shadowed (function)	1
+crates/cli/src/main.rs::main (function)	calls	crates/cli/src/main.rs::uses_global (function)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/circle.rs::Circle::new (method)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/geometry.rs::Area::describe (method)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/geometry.rs::sides (function)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/lib.rs::Wrapper<T>::get (method)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/lib.rs::Wrapper<T>::new (method)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/lib.rs::parse_all (function)	1
+crates/cli/src/main.rs::main (function)	calls	crates/core/src/lib.rs::total_area (function)	1
+crates/cli/src/main.rs::main (function)	references	crates/core/src/geometry.rs::Area (trait)	1
+crates/cli/src/main.rs::main (function)	references	crates/core/src/geometry.rs::Point (struct)	1
+crates/cli/src/main.rs::main (function)	references	crates/core/src/geometry.rs::Shape::Empty (enum_member)	1
+crates/cli/src/main.rs::rebinds (function)	calls	crates/cli/src/main.rs::config (function)	1
+crates/cli/src/main.rs::rebinds (function)	calls	crates/core/src/geometry.rs::sides (function)	1
+crates/cli/src/main.rs::rebinds (function)	references	crates/core/src/geometry.rs::Shape::Empty (enum_member)	1
+crates/cli/src/main.rs::uses_global (function)	calls	crates/cli/src/main.rs::config (function)	1
 crates/cli/src/memory.rs (file)	contains	crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	0
 crates/cli/src/memory.rs (file)	contains	crates/cli/src/memory.rs::MemoryStore (struct)	0
+crates/cli/src/memory.rs (file)	imports	crates/core/src/store.rs (file)	1
+crates/cli/src/memory.rs (file)	references	crates/cli/src/memory.rs::MemoryStore (struct)	1
+crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	overrides	crates/core/src/store.rs::Store::load (method)	0
 crates/cli/src/memory.rs::MemoryStore (struct)	contains	crates/cli/src/memory.rs::MemoryStore::entries (field)	0
+crates/cli/src/memory.rs::MemoryStore (struct)	implements	crates/core/src/store.rs::Store (trait)	0
 crates/core/Cargo.toml (package)	contains	crates/core/src/circle.rs (file)	0
 crates/core/Cargo.toml (package)	contains	crates/core/src/geometry.rs (file)	0
 crates/core/Cargo.toml (package)	contains	crates/core/src/lib.rs (file)	0
@@ -19,6 +43,12 @@ crates/core/Cargo.toml (package)	contains	crates/core/src/store.rs (file)	0
 crates/core/Cargo.toml (package)	depends_on	package:cargo:async-trait (package)	0
 crates/core/src/circle.rs (file)	contains	crates/core/src/circle.rs::Circle::new (method)	0
 crates/core/src/circle.rs (file)	contains	crates/core/src/circle.rs::Circle::scaled (method)	0
+crates/core/src/circle.rs (file)	imports	crates/core/src/geometry.rs (file)	2
+crates/core/src/circle.rs (file)	references	crates/core/src/geometry.rs::Circle (struct)	1
+crates/core/src/circle.rs::Circle::new (method)	references	crates/core/src/geometry.rs::Circle (struct)	2
+crates/core/src/circle.rs::Circle::new (method)	references	crates/core/src/geometry.rs::Point (struct)	1
+crates/core/src/circle.rs::Circle::scaled (method)	calls	crates/core/src/circle.rs::Circle::new (method)	1
+crates/core/src/circle.rs::Circle::scaled (method)	references	crates/core/src/geometry.rs::Circle (struct)	1
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::<Circle as Area>::area (method)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::<Circle as Area>::name (method)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::<Circle as fmt::Debug>::fmt (method)	0
@@ -30,20 +60,34 @@ crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Point (
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Shape (enum)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::sides (function)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::tests (module)	0
+crates/core/src/geometry.rs (file)	references	crates/core/src/geometry.rs::Circle (struct)	3
+crates/core/src/geometry.rs::<Circle as Area>::area (method)	overrides	crates/core/src/geometry.rs::Area::area (method)	0
+crates/core/src/geometry.rs::<Circle as Area>::name (method)	overrides	crates/core/src/geometry.rs::Area::name (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::area (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::describe (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::name (method)	0
+crates/core/src/geometry.rs::Area::describe (method)	calls	crates/core/src/geometry.rs::Area::area (method)	1
+crates/core/src/geometry.rs::Area::describe (method)	calls	crates/core/src/geometry.rs::Area::name (method)	1
 crates/core/src/geometry.rs::Bits (struct)	contains	crates/core/src/geometry.rs::Bits::float (field)	0
 crates/core/src/geometry.rs::Bits (struct)	contains	crates/core/src/geometry.rs::Bits::int (field)	0
 crates/core/src/geometry.rs::Circle (struct)	contains	crates/core/src/geometry.rs::Circle::center (field)	0
 crates/core/src/geometry.rs::Circle (struct)	contains	crates/core/src/geometry.rs::Circle::radius (field)	0
+crates/core/src/geometry.rs::Circle (struct)	implements	crates/core/src/geometry.rs::Area (trait)	0
+crates/core/src/geometry.rs::Circle::center (field)	references	crates/core/src/geometry.rs::Point (struct)	1
 crates/core/src/geometry.rs::Point (struct)	contains	crates/core/src/geometry.rs::Point::x (field)	0
 crates/core/src/geometry.rs::Point (struct)	contains	crates/core/src/geometry.rs::Point::y (field)	0
 crates/core/src/geometry.rs::Shape (enum)	contains	crates/core/src/geometry.rs::Shape::Empty (enum_member)	0
 crates/core/src/geometry.rs::Shape (enum)	contains	crates/core/src/geometry.rs::Shape::Round (enum_member)	0
 crates/core/src/geometry.rs::Shape (enum)	contains	crates/core/src/geometry.rs::Shape::Square (enum_member)	0
+crates/core/src/geometry.rs::Shape::Round (enum_member)	references	crates/core/src/geometry.rs::Circle (struct)	1
 crates/core/src/geometry.rs::Shape::Square (enum_member)	contains	crates/core/src/geometry.rs::Shape::Square::side (field)	0
+crates/core/src/geometry.rs::sides (function)	references	crates/core/src/geometry.rs::Shape (enum)	1
+crates/core/src/geometry.rs::sides (function)	references	crates/core/src/geometry.rs::Shape::Empty (enum_member)	1
+crates/core/src/geometry.rs::sides (function)	references	crates/core/src/geometry.rs::Shape::Round (enum_member)	1
+crates/core/src/geometry.rs::sides (function)	references	crates/core/src/geometry.rs::Shape::Square (enum_member)	1
 crates/core/src/geometry.rs::tests (module)	defines	crates/core/src/geometry.rs::tests::squares_have_four_sides (function)	0
+crates/core/src/geometry.rs::tests::squares_have_four_sides (function)	calls	crates/core/src/geometry.rs::sides (function)	1
+crates/core/src/geometry.rs::tests::squares_have_four_sides (function)	references	crates/core/src/geometry.rs::Shape::Square (enum_member)	1
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::GREETING (constant)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::MAX_SHAPES (constant)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::Wrapper (struct)	0
@@ -56,20 +100,40 @@ crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::render (module)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::store (module)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::total_area (function)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::zeros (function)	0
+crates/core/src/lib.rs (file)	exports	crates/core/src/geometry.rs::Area (trait)	1
+crates/core/src/lib.rs (file)	exports	crates/core/src/geometry.rs::Circle (struct)	1
+crates/core/src/lib.rs (file)	exports	crates/core/src/geometry.rs::Point (struct)	1
+crates/core/src/lib.rs (file)	exports	crates/core/src/geometry.rs::Shape (enum)	1
+crates/core/src/lib.rs (file)	exports	crates/core/src/render.rs::Render (trait)	1
+crates/core/src/lib.rs (file)	references	crates/core/src/lib.rs::Wrapper (struct)	1
 crates/core/src/lib.rs::Wrapper (struct)	contains	crates/core/src/lib.rs::Wrapper::inner (field)	0
+crates/core/src/lib.rs::Wrapper<T>::new (method)	references	crates/core/src/lib.rs::Wrapper (struct)	2
+crates/core/src/lib.rs::total_area (function)	calls	crates/core/src/geometry.rs::Area::area (method)	1
+crates/core/src/lib.rs::total_area (function)	references	crates/core/src/geometry.rs::Area (trait)	1
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::<T as Render>::render (method)	0
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::Canvas (struct)	0
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::Labelled (trait)	0
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::Render (trait)	0
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::layout (module)	0
+crates/core/src/render.rs (file)	imports	crates/core/src/geometry.rs (file)	1
+crates/core/src/render.rs (file)	references	crates/core/src/geometry.rs::Area (trait)	1
+crates/core/src/render.rs::<T as Render>::render (method)	calls	crates/core/src/geometry.rs::Area::describe (method)	1
+crates/core/src/render.rs::<T as Render>::render (method)	overrides	crates/core/src/render.rs::Render::render (method)	0
 crates/core/src/render.rs::Canvas (struct)	contains	crates/core/src/render.rs::Canvas::width (field)	0
 crates/core/src/render.rs::Labelled (trait)	contains	crates/core/src/render.rs::Labelled::label (method)	0
+crates/core/src/render.rs::Labelled (trait)	extends	crates/core/src/geometry.rs::Area (trait)	1
+crates/core/src/render.rs::Labelled (trait)	extends	crates/core/src/render.rs::Render (trait)	1
 crates/core/src/render.rs::Render (trait)	contains	crates/core/src/render.rs::Render::render (method)	0
 crates/core/src/render.rs::layout (module)	defines	crates/core/src/render.rs::layout::<super::Canvas>::cells (method)	0
 crates/core/src/render.rs::layout (module)	defines	crates/core/src/render.rs::layout::grid (module)	0
 crates/core/src/render.rs::layout (module)	defines	crates/core/src/render.rs::layout::total_columns (function)	0
+crates/core/src/render.rs::layout (module)	references	crates/core/src/render.rs::Canvas (struct)	1
+crates/core/src/render.rs::layout::<super::Canvas>::cells (method)	references	crates/core/src/render.rs::layout::grid::COLUMNS (constant)	1
 crates/core/src/render.rs::layout::grid (module)	defines	crates/core/src/render.rs::layout::grid::COLUMNS (constant)	0
 crates/core/src/render.rs::layout::grid (module)	defines	crates/core/src/render.rs::layout::grid::columns (function)	0
+crates/core/src/render.rs::layout::grid::columns (function)	references	crates/core/src/render.rs::layout::grid::COLUMNS (constant)	1
+crates/core/src/render.rs::layout::total_columns (function)	calls	crates/core/src/render.rs::layout::grid::columns (function)	1
 crates/core/src/store.rs (file)	contains	crates/core/src/store.rs::Store (trait)	0
 crates/core/src/store.rs::Store (trait)	contains	crates/core/src/store.rs::Store::exists (method)	0
 crates/core/src/store.rs::Store (trait)	contains	crates/core/src/store.rs::Store::load (method)	0
+crates/core/src/store.rs::Store::exists (method)	calls	crates/core/src/store.rs::Store::load (method)	1

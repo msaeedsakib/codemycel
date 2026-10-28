@@ -1,12 +1,33 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ByteRange, FileKind, Language, RepoPath, RootId, SkipReason, Span};
+use super::{
+    ByteRange, Coverage, DegradeReason, FileKind, Language, RepoPath, RootId, ServerSource,
+    SkipReason, Span,
+};
 
 /// A language project boundary. `Store::set_root` assigns its `RootId`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Root {
     pub path: RepoPath,
     pub language: Language,
+}
+
+/// The language server a root was enriched with.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerInfo {
+    pub name: String,
+    pub version: String,
+    pub source: ServerSource,
+}
+
+/// What the verify phase recorded for a root.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RootStatus {
+    pub server: Option<ServerInfo>,
+    pub coverage: Coverage,
+    pub degraded: Option<DegradeReason>,
+    /// Diagnostics the server published for the root's configuration file; they never degrade it.
+    pub config_diagnostics: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

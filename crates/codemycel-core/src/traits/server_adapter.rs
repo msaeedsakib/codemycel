@@ -47,6 +47,9 @@ pub trait ServerAdapter: Send + Sync {
 
     fn pinned_version(&self) -> &'static str;
 
+    /// The executable looked up on `PATH` and stored in the cache, without `.exe`.
+    fn binary_name(&self) -> &'static str;
+
     /// `None` when the language has no toolchain to consult; lookup then goes to `PATH`.
     fn toolchain(&self) -> Option<Toolchain>;
 
@@ -63,6 +66,9 @@ pub trait ServerAdapter: Send + Sync {
     fn validate(&self, binary: &Path) -> Result<String, String>;
 
     fn launch_args(&self) -> &'static [&'static str];
+
+    /// The `languageId` sent in `didOpen` for a file with this extension (no dot).
+    fn language_id(&self, extension: &str) -> &'static str;
 
     fn initialization_options(&self, config: &ServerConfig) -> serde_json::Value;
 

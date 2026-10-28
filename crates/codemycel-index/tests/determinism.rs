@@ -69,11 +69,17 @@ fn crlf_and_bom_do_not_change_the_graph() {
     let original = fixture("typescript/monorepo-basic");
     let temp = tempfile::tempdir().unwrap();
     let copy = temp.path().join("repo");
-    copy_tree(&original, &copy, &|_, bytes| {
-        let text = String::from_utf8(bytes).unwrap();
-        let crlf = text.replace("\r\n", "\n").replace('\n', "\r\n");
-        format!("\u{feff}{crlf}").into_bytes()
-    });
+    copy_tree(
+        &original,
+        &copy,
+        &|_, bytes| match String::from_utf8(bytes) {
+            Ok(text) => {
+                let crlf = text.replace("\r\n", "\n").replace('\n', "\r\n");
+                format!("\u{feff}{crlf}").into_bytes()
+            }
+            Err(binary) => binary.into_bytes(),
+        },
+    );
     assert_same(
         &index_fixture(&original),
         &index_fixture(&copy),
