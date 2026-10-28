@@ -1,21 +1,22 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use codemycel_core::config::ServerConfig;
-use codemycel_core::{DegradeReason, RepoPath, Root, ServerAdapter, ServerInfo};
+use codemycel_core::{DegradeReason, Root, ServerAdapter, ServerInfo};
 use codemycel_lsp::enrich::absolute;
 use codemycel_lsp::{EnrichOptions, EnrichReport, Enricher, Provisioner, ServerLaunch, Session};
 use tokio::runtime::Runtime;
 
-use super::{RootJob, RootOutcome, Servers};
+use super::{RootJob, RootOutcome, Servers, SyncStart};
 use crate::Registry;
 
 /// Language servers kept running between a session's syncs, one per root. A root's server
 /// starts on its first job, is told about every sync's changed files and reused while warm, and
-/// stops once `reap_idle` finds it unused for the idle timeout. Server adapters come from the
-/// registry the pool borrows, so a server outlives the jobs that use it.
+/// stops once `reap_idle` finds it unused for the idle timeout, once its language's manifests or
+/// project configs change, or once another process wrote the store. Server adapters come from
+/// the registry the pool borrows, so a server outlives the jobs that use it.
 pub struct ServerPool<'r> {
     registry: &'r Registry,
     home: PathBuf,
@@ -29,6 +30,8 @@ pub struct ServerPool<'r> {
 struct State<'r> {
     runtime: Option<Runtime>,
     warm: BTreeMap<Root, Warm<'r>>,
+    /// The `indexed_at` this pool's last sync recorded.
+    seen: Option<String>,
 }
 
 struct Warm<'r> {
@@ -205,13 +208,36 @@ impl Servers for ServerPool<'_> {
         }
     }
 
-    /// Sends `workspace/didChangeWatchedFiles` to every running server.
-    fn files_changed(&self, repo_root: &Path, changed: &[RepoPath]) {
-        for (root, warm) in &self.lock().warm {
-            if let Err(error) = warm.session.files_changed(repo_root, changed) {
+    /// Stops every running server when the store was written since this pool's last sync, by
+    /// another process, and every server of a reconfigured language, which may answer from its
+    /// old project model until it reloads. Sends `workspace/didChangeWatchedFiles` to the rest.
+    fn sync_started(&self, start: &SyncStart<'_>) {
+        let mut state = self.lock();
+        let state = &mut *state;
+        let outdated = state.seen.as_deref() != start.indexed_at;
+        let stopped: Vec<Root> = state
+            .warm
+            .keys()
+            .filter(|root| outdated || start.reconfigured.contains(&root.language))
+            .cloned()
+            .collect();
+        for root in stopped {
+            if let Some(warm) = state.warm.remove(&root) {
+                shut_down(state.runtime.as_ref(), warm);
+            }
+        }
+        if start.changed.is_empty() {
+            return;
+        }
+        for (root, warm) in &state.warm {
+            if let Err(error) = warm.session.files_changed(start.repo_root, start.changed) {
                 tracing::debug!(root = %root.path, "telling the server about changes: {error}");
             }
         }
+    }
+
+    fn sync_finished(&self, indexed_at: &str) {
+        self.lock().seen = Some(indexed_at.to_owned());
     }
 }
 

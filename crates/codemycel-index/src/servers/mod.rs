@@ -7,8 +7,8 @@ use std::path::Path;
 
 use codemycel_core::config::Config;
 use codemycel_core::{
-    DegradeReason, Edge, LanguageAdapter, RepoPath, Root, ServerAdapter, ServerInfo, Unresolved,
-    UnresolvedReason,
+    DegradeReason, Edge, Language, LanguageAdapter, RepoPath, Root, ServerAdapter, ServerInfo,
+    Unresolved, UnresolvedReason,
 };
 use codemycel_lsp::{EnrichOptions, IndexView, LspResolver, Provisioner, ServerLaunch};
 
@@ -64,15 +64,29 @@ impl RootOutcome {
     }
 }
 
+/// What a sync tells the servers before its first job.
+pub struct SyncStart<'a> {
+    pub repo_root: &'a Path,
+    /// The store's `indexed_at` as the sync found it. A server still running from a sync that
+    /// did not record it has not seen what the sync that did changed.
+    pub indexed_at: Option<&'a str>,
+    /// Every path the sync found added, modified, or deleted.
+    pub changed: &'a [RepoPath],
+    /// The languages whose manifests or project configs are among `changed`.
+    pub reconfigured: &'a BTreeSet<Language>,
+}
+
 /// Where a root's language server comes from: started and stopped for each run in batch mode,
 /// kept warm between syncs by a session.
 pub trait Servers {
     fn enrich(&self, job: &RootJob<'_>) -> RootOutcome;
 
-    /// Called once per sync, before its first job, with every path the sync found added,
-    /// modified, or deleted, so servers still running from an earlier sync drop what they
-    /// cached about them, whether or not their root has a job in this sync.
-    fn files_changed(&self, _repo_root: &Path, _changed: &[RepoPath]) {}
+    /// Called once per sync, before its first job, so servers still running from an earlier
+    /// sync catch up on the changes, whether or not their root has a job in this sync.
+    fn sync_started(&self, _start: &SyncStart<'_>) {}
+
+    /// Called once a sync is written, with the `indexed_at` it recorded.
+    fn sync_finished(&self, _indexed_at: &str) {}
 }
 
 /// Locates, starts, enriches with, and shuts down a server for every job.
