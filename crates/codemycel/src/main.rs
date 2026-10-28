@@ -3,10 +3,11 @@
 mod cli;
 mod commands;
 mod progress;
+mod update_check;
 
 use clap::Parser;
 
-use crate::cli::Cli;
+use crate::cli::{Cli, Command};
 use crate::commands::ExitCode;
 
 fn main() -> std::process::ExitCode {
@@ -23,11 +24,19 @@ fn main() -> std::process::ExitCode {
             return code.into();
         }
     };
-    match commands::dispatch(&cli.command, &cli.context) {
-        Ok(code) => code.into(),
+    let code = match commands::dispatch(&cli.command, &cli.context) {
+        Ok(code) => code,
         Err(error) => {
             eprintln!("error: {error:#}");
-            ExitCode::Error.into()
+            ExitCode::Error
         }
+    };
+    if !matches!(
+        cli.command,
+        Command::Mcp(_) | Command::Ui(_) | Command::Upgrade(_)
+    ) && let Ok(home) = codemycel_core::config::home_dir()
+    {
+        update_check::run(&home);
     }
+    code.into()
 }

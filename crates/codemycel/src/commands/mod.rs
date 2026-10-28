@@ -16,7 +16,11 @@ mod unresolved;
 mod upgrade;
 
 use anyhow::Context as _;
-use codemycel_index::{RepoLocation, RepoLocator};
+use codemycel_core::query::{
+    Answer, CoverageState, JsonFormatter, Outcome, QueryEngine, QueryError, TextFormatter,
+};
+use codemycel_core::store::{SCHEMA_VERSION, Store, StoreError};
+use codemycel_index::{Registry, RepoLocation, RepoLocator, RepoRegistry};
 
 use crate::cli::{Command, Context};
 
@@ -68,6 +72,76 @@ fn locate(ctx: &Context) -> anyhow::Result<RepoLocation> {
         std::env::home_dir().as_deref(),
         codemycel_core::config::home_dir().ok().as_deref(),
     ))
+}
+
+/// The read-only index of `location`, or `None` after saying why there is none: no index (with
+/// the registry's repositories listed on stderr for information) or one of another schema.
+fn open_index(location: &RepoLocation) -> anyhow::Result<Option<Store>> {
+    let db = location.index_path();
+    let repo = location.root.display();
+    if !db.exists() {
+        println!("no index: run codemycel init in {repo}");
+        if let Ok(home) = codemycel_core::config::home_dir() {
+            let registry = RepoRegistry::load(&home);
+            if !registry.entries().is_empty() {
+                eprintln!("indexed repositories:");
+                for entry in registry.entries() {
+                    eprintln!("  {}", entry.path.display());
+                }
+            }
+        }
+        return Ok(None);
+    }
+    match Store::open(&db, true) {
+        Ok(store) => Ok(Some(store)),
+        Err(StoreError::SchemaMismatch { found, .. }) => {
+            println!(
+                "index schema {found} is out of date (expected {SCHEMA_VERSION}): run codemycel init in {repo}"
+            );
+            Ok(None)
+        }
+        Err(error) => Err(error).with_context(|| format!("opening {}", db.display())),
+    }
+}
+
+/// Runs one query tool on the repository's index and prints its answer.
+fn query(
+    ctx: &Context,
+    run: impl FnOnce(&QueryEngine<'_>) -> Result<Answer, QueryError>,
+) -> anyhow::Result<ExitCode> {
+    let location = locate(ctx)?;
+    let Some(store) = open_index(&location)? else {
+        return Ok(ExitCode::Degraded);
+    };
+    let registry = Registry::default();
+    let engine = QueryEngine::open(&location.root, store, registry.adapters());
+    let answer = run(&engine)?;
+    print_answer(&answer, ctx.json)
+}
+
+/// Prints `answer` as text or JSON. Exits 2 when ambiguous or when a root is degraded, 1 when
+/// nothing matched.
+fn print_answer(answer: &Answer, json: bool) -> anyhow::Result<ExitCode> {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&JsonFormatter::render(answer))?
+        );
+    } else {
+        print!("{}", TextFormatter::render(answer));
+    }
+    let degraded = answer
+        .freshness
+        .coverage
+        .iter()
+        .flat_map(|language| &language.states)
+        .any(|state| matches!(state, CoverageState::Degraded { .. }));
+    Ok(match answer.outcome {
+        Outcome::Ambiguous => ExitCode::Degraded,
+        Outcome::NotFound => ExitCode::Error,
+        Outcome::Ok if degraded => ExitCode::Degraded,
+        Outcome::Ok => ExitCode::Ok,
+    })
 }
 
 fn not_implemented(command: &str) -> anyhow::Result<ExitCode> {
