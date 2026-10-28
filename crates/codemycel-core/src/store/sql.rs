@@ -4,8 +4,9 @@ use rusqlite::Row;
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 
 use crate::{
-    CandidateRole, EdgeKind, FileKind, LabelSource, Language, NodeKind, NoteKind, Occurrence,
-    RepoPath, SemanticPath, SkipReason, UnresolvedReason, VerifiedBy,
+    CandidateRole, Coverage, DegradeReason, EdgeKind, FileKind, LabelSource, Language, NodeKind,
+    NoteKind, Occurrence, RepoPath, SemanticPath, ServerSource, SkipReason, UnresolvedReason,
+    VerifiedBy,
 };
 
 fn parse_text<T: FromStr>(value: ValueRef<'_>) -> FromSqlResult<T>
@@ -59,6 +60,9 @@ text_column!(
     SkipReason => |v: &SkipReason| v.as_str(),
     NoteKind => |v: &NoteKind| v.as_str(),
     LabelSource => |v: &LabelSource| v.as_str(),
+    DegradeReason => |v: &DegradeReason| v.as_str(),
+    ServerSource => |v: &ServerSource| v.as_str(),
+    Coverage => |v: &Coverage| v.as_str(),
 );
 
 pub(crate) fn hash_at(row: &Row<'_>, idx: usize) -> rusqlite::Result<Option<blake3::Hash>> {
@@ -77,7 +81,20 @@ pub(crate) fn hash_at(row: &Row<'_>, idx: usize) -> rusqlite::Result<Option<blak
 
 pub(crate) fn occurrences_at(row: &Row<'_>, idx: usize) -> rusqlite::Result<Vec<Occurrence>> {
     let text: String = row.get(idx)?;
-    serde_json::from_str(&text).map_err(|e| {
+    parse_json(idx, &text)
+}
+
+pub(crate) fn json_at<T: serde::de::DeserializeOwned>(
+    row: &Row<'_>,
+    idx: usize,
+) -> rusqlite::Result<Option<T>> {
+    row.get::<_, Option<String>>(idx)?
+        .map(|text| parse_json(idx, &text))
+        .transpose()
+}
+
+fn parse_json<T: serde::de::DeserializeOwned>(idx: usize, text: &str) -> rusqlite::Result<T> {
+    serde_json::from_str(text).map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(idx, rusqlite::types::Type::Text, Box::new(e))
     })
 }

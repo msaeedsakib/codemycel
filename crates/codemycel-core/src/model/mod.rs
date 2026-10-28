@@ -16,11 +16,11 @@ pub use candidate::{Candidate, Unresolved, Verdict};
 pub use derived::{Community, Note, SyncOwner};
 pub use edge::Edge;
 pub use error::ModelError;
-pub use file::{FileRecord, ImplRecord, Root};
+pub use file::{FileRecord, ImplRecord, Root, RootStatus, ServerInfo};
 pub use ids::{FileId, NodeId, NoteId, RootId};
 pub use kinds::{
-    CandidateRole, EdgeKind, FileKind, LabelSource, Language, NodeKind, NoteKind, SkipReason,
-    UnresolvedReason, VerifiedBy,
+    CandidateRole, Coverage, DegradeReason, EdgeKind, FileKind, LabelSource, Language, NodeKind,
+    NoteKind, ServerSource, SkipReason, UnresolvedReason, VerifiedBy,
 };
 pub use node::{Node, NodeRef, StoredNode};
 pub use package::Package;

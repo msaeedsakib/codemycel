@@ -6,11 +6,11 @@ use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 use super::StoreError;
 use super::dump;
 use super::error::Result;
-use super::sql::{hash_at, occurrences_at};
+use super::sql::{hash_at, json_at, occurrences_at};
 use crate::{
-    ByteRange, Candidate, Edge, EdgeKind, FileId, FileRecord, ImplRecord, Node, NodeId, NodeKind,
-    NodeRef, Occurrence, RepoPath, Root, RootId, SearchHit, SemanticPath, Span, StoredNode,
-    Unresolved, UnresolvedReason,
+    ByteRange, Candidate, Coverage, Edge, EdgeKind, FileId, FileRecord, ImplRecord, Node, NodeId,
+    NodeKind, NodeRef, Occurrence, RepoPath, Root, RootId, RootStatus, SearchHit, SemanticPath,
+    ServerInfo, Span, StoredNode, Unresolved, UnresolvedReason,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,6 +23,8 @@ pub struct StoredFile {
 pub struct StoredRoot {
     pub id: RootId,
     pub root: Root,
+    /// `None` until a verify phase has run over the root.
+    pub status: Option<RootStatus>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -78,18 +80,47 @@ pub trait StoreRead {
     }
 
     fn roots(&self) -> Result<Vec<StoredRoot>> {
-        let mut stmt = self
-            .conn()
-            .prepare_cached("SELECT id, path, language FROM roots ORDER BY path, language")?;
+        let mut stmt = self.conn().prepare_cached(
+            "SELECT id, path, language, server_name, server_version, server_source, coverage,
+                    degraded_reason, config_diagnostics
+             FROM roots ORDER BY path, language",
+        )?;
         let rows = stmt.query_map([], |row| {
+            let server = match (row.get(3)?, row.get(4)?, row.get(5)?) {
+                (Some(name), Some(version), Some(source)) => Some(ServerInfo {
+                    name,
+                    version,
+                    source,
+                }),
+                _ => None,
+            };
+            let status = match row.get::<_, Option<Coverage>>(6)? {
+                Some(coverage) => Some(RootStatus {
+                    server,
+                    coverage,
+                    degraded: row.get(7)?,
+                    config_diagnostics: json_at(row, 8)?.unwrap_or_default(),
+                }),
+                None => None,
+            };
             Ok(StoredRoot {
                 id: RootId(row.get(0)?),
                 root: Root {
                     path: row.get(1)?,
                     language: row.get(2)?,
                 },
+                status,
             })
         })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Files whose server requests failed twice in the last run, sorted.
+    fn partially_enriched_files(&self) -> Result<Vec<RepoPath>> {
+        let mut stmt = self
+            .conn()
+            .prepare_cached("SELECT path FROM files WHERE partially_enriched = 1 ORDER BY path")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
