@@ -160,6 +160,28 @@ fn uppercase_pattern_identifiers_are_not_bindings() {
 }
 
 #[test]
+fn pattern_bindings_stay_out_of_else_branches() {
+    let parsed = parse(
+        "fn f(o: Option<u32>) {\n    if let Some(open) = o { open } else { open(1) };\n    if let Some(a) = o { a } else if let Some(b) = o { a(2); b } else { b(3) };\n    while let Some(w) = o { w; }\n    let Some(z) = o else { z(4) };\n    z;\n}\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "1:8 type Option",
+            "2:11 value Some",
+            "2:42 call open",
+            "3:11 value Some",
+            "3:41 value Some",
+            "3:55 call a",
+            "3:72 call b",
+            "4:14 value Some",
+            "5:8 value Some",
+            "5:27 call z",
+        ]
+    );
+}
+
+#[test]
 fn generic_parameters_are_locals() {
     let parsed = parse("fn g<T: Bound, const N: usize>(t: T) -> [u8; N] {\n    [0; N]\n}\n");
     assert_eq!(candidates(&parsed), ["1:8 type Bound"]);
