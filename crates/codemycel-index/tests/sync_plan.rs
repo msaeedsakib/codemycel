@@ -122,19 +122,36 @@ fn plan(
     changes: &ChangeSet,
     symbols: BTreeMap<RepoPath, ChangedSymbols>,
 ) -> BTreeSet<String> {
+    build(store, changes, symbols, &BTreeMap::new())
+        .reverify
+        .iter()
+        .map(|f| f.as_str().to_owned())
+        .collect()
+}
+
+fn build(
+    store: &Store,
+    changes: &ChangeSet,
+    symbols: BTreeMap<RepoPath, ChangedSymbols>,
+    supertypes: &BTreeMap<RepoPath, BTreeSet<String>>,
+) -> SyncPlan {
     let parsed: BTreeSet<RepoPath> = store
         .files()
         .unwrap()
         .into_iter()
         .map(|f| f.record.path)
         .filter(|f| !changes.deleted.contains(f))
+        .chain(changes.added.iter().cloned())
         .collect();
-    SyncPlan::build(changes, &symbols, &BTreeSet::new(), &parsed, store)
-        .unwrap()
-        .reverify
-        .iter()
-        .map(|f| f.as_str().to_owned())
-        .collect()
+    SyncPlan::build(
+        changes,
+        &symbols,
+        &BTreeSet::new(),
+        &parsed,
+        supertypes,
+        store,
+    )
+    .unwrap()
 }
 
 fn diff_of(
@@ -295,6 +312,122 @@ fn added_symbol_plans_files_whose_candidates_name_it() {
     );
 
     assert_eq!(planned, names(&["caller.rs", "host.rs"]));
+}
+
+#[test]
+fn visibility_change_plans_files_whose_candidates_name_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let caller = function("caller.rs", "caller");
+    let hidden = function("host.rs", "hidden");
+    let store = {
+        let mut store = store(&dir, &[caller.clone(), hidden.clone()], &[]);
+        store
+            .transaction(|tx| {
+                tx.insert_unresolved(&[Unresolved {
+                    candidate: Candidate {
+                        file: path("caller.rs"),
+                        enclosing: caller.node_ref(),
+                        text: "hidden".to_owned(),
+                        role: CandidateRole::Call,
+                        at: Occurrence { line: 1, col: 5 },
+                    },
+                    reason: UnresolvedReason::Unmapped,
+                }])
+            })
+            .unwrap();
+        store
+    };
+    let exported = Node {
+        visibility: Some("export".to_owned()),
+        ..hidden
+    };
+
+    let diff = diff_of(&store, "host.rs", &[exported], &[]);
+    assert_eq!(diff.changed.len(), 1);
+    let planned = plan(
+        &store,
+        &modified(&["host.rs"]),
+        BTreeMap::from([(path("host.rs"), diff)]),
+    );
+
+    assert_eq!(planned, names(&["caller.rs", "host.rs"]));
+}
+
+fn member(file: &str, container: &str, name: &str, kind: NodeKind) -> Node {
+    let mut node = symbol(file, name, kind, &format!("fn {name}(&self)"), "");
+    node.path = SemanticPath::symbol(&path(file), &[container], name, None).unwrap();
+    node
+}
+
+#[test]
+fn trait_gaining_a_method_plans_its_implementers() {
+    let dir = tempfile::tempdir().unwrap();
+    let paint = symbol("paint.rs", "Paint", NodeKind::Trait, "trait Paint", "");
+    let method = member("paint.rs", "Paint", "paint", NodeKind::Method);
+    let ring = symbol("ring.rs", "Ring", NodeKind::Struct, "struct Ring", "");
+    let unrelated = function("other.rs", "other");
+    let store = store(
+        &dir,
+        &[paint.clone(), method.clone(), ring.clone(), unrelated],
+        &[edge(&ring, &paint, EdgeKind::Implements)],
+    );
+    let gloss = member("paint.rs", "Paint", "gloss", NodeKind::Method);
+
+    let diff = diff_of(&store, "paint.rs", &[paint.clone(), method, gloss], &[]);
+    assert_eq!(diff.changed, [paint.node_ref()]);
+    let planned = plan(
+        &store,
+        &modified(&["paint.rs"]),
+        BTreeMap::from([(path("paint.rs"), diff)]),
+    );
+
+    assert_eq!(planned, names(&["paint.rs", "ring.rs"]));
+}
+
+#[test]
+fn new_implementer_asks_the_interface_file_for_implementers() {
+    let dir = tempfile::tempdir().unwrap();
+    let shape = symbol(
+        "shapes.ts",
+        "Shape",
+        NodeKind::Interface,
+        "interface Shape",
+        "",
+    );
+    let unrelated = symbol(
+        "other.ts",
+        "Shape",
+        NodeKind::Function,
+        "function Shape()",
+        "",
+    );
+    let store = store(&dir, &[shape, unrelated], &[]);
+    let triangle = symbol(
+        "triangle.ts",
+        "Triangle",
+        NodeKind::Class,
+        "class Triangle",
+        "",
+    );
+    let changes = ChangeSet {
+        added: [path("triangle.ts")].into(),
+        ..ChangeSet::default()
+    };
+
+    let diff = diff_of(&store, "triangle.ts", &[triangle], &[]);
+    let supertypes = BTreeMap::from([(path("triangle.ts"), BTreeSet::from(["Shape".to_owned()]))]);
+    let plan = build(
+        &store,
+        &changes,
+        BTreeMap::from([(path("triangle.ts"), diff)]),
+        &supertypes,
+    );
+
+    assert_eq!(plan.reverify, [path("triangle.ts")].into());
+    assert_eq!(
+        plan.implementer_sources,
+        [path("shapes.ts"), path("triangle.ts")].into()
+    );
 }
 
 #[test]

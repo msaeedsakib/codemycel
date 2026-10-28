@@ -14,8 +14,9 @@ pub struct TraitImpl {
 pub struct ChangedSymbols {
     pub added: Vec<Node>,
     pub removed: Vec<NodeRef>,
-    /// Kept, but with a different signature, or a function or method without an explicit
-    /// return type whose body changed, since its inferred type may have.
+    /// Kept, but with a different signature or visibility, a function or method without an
+    /// explicit return type whose body changed, since its inferred type may have, or a trait or
+    /// interface one of whose members was added, removed, or changed.
     pub changed: Vec<NodeRef>,
     pub impls_added: Vec<TraitImpl>,
     pub impls_removed: Vec<TraitImpl>,
@@ -48,10 +49,11 @@ impl SymbolsDiff {
                 .collect()
         };
         let mut old = symbols(old_nodes);
+        let new = symbols(new_nodes);
         let mut diff = ChangedSymbols::default();
-        for (identity, node) in symbols(new_nodes) {
-            match old.remove(&identity) {
-                None => diff.added.push(node),
+        for (identity, node) in &new {
+            match old.remove(identity) {
+                None => diff.added.push(node.clone()),
                 Some(before) => {
                     let signature = before.signature != node.signature
                         || before.visibility != node.visibility
@@ -60,12 +62,28 @@ impl SymbolsDiff {
                         && !node.has_explicit_return_type
                         && before.body_hash != node.body_hash;
                     if signature || inferred {
-                        diff.changed.push(identity);
+                        diff.changed.push(identity.clone());
                     }
                 }
             }
         }
         diff.removed = old.into_keys().collect();
+        let members: Vec<NodeRef> = diff
+            .added
+            .iter()
+            .map(Node::node_ref)
+            .chain(diff.removed.iter().cloned())
+            .chain(diff.changed.iter().cloned())
+            .collect();
+        for member in &members {
+            let Some(parent) = new.keys().find(|parent| is_parent_of(parent, member)) else {
+                continue;
+            };
+            let added = diff.added.iter().any(|node| node.node_ref() == *parent);
+            if !added && !diff.changed.contains(parent) {
+                diff.changed.push(parent.clone());
+            }
+        }
         let mut old_impls = trait_impls(old_impls);
         for found in trait_impls(new_impls) {
             match old_impls.iter().position(|old| *old == found) {
@@ -78,6 +96,20 @@ impl SymbolsDiff {
         diff.impls_removed = old_impls;
         diff
     }
+}
+
+/// Whether `parent` is a trait or interface that declares `member` directly.
+fn is_parent_of(parent: &NodeRef, member: &NodeRef) -> bool {
+    if !matches!(parent.kind, NodeKind::Trait | NodeKind::Interface) {
+        return false;
+    }
+    let containers = member.path.containers();
+    let Some((name, outer)) = containers.split_last() else {
+        return false;
+    };
+    parent.path.file() == member.path.file()
+        && parent.path.name() == *name
+        && parent.path.containers() == outer
 }
 
 fn trait_impls(records: &[ImplRecord]) -> Vec<TraitImpl> {
