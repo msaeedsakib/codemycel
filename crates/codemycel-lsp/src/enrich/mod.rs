@@ -4,7 +4,7 @@ mod session;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -436,6 +436,15 @@ impl<'a> Enricher<'a> {
                 return Ok(Verdict::Confirmed { target });
             }
         }
+        if candidate.role == CandidateRole::Import {
+            let file_node = locations.iter().find_map(|location| {
+                let file = self.mapper.repo_path(&location.uri).ok()?;
+                Some(self.view.file(&file)?.file_node.clone())
+            });
+            if let Some(target) = file_node {
+                return Ok(Verdict::Confirmed { target });
+            }
+        }
         Ok(verdict)
     }
 
@@ -770,12 +779,24 @@ pub fn extension(file: &RepoPath) -> &str {
     name.rsplit_once('.').map_or("", |(_, ext)| ext)
 }
 
-/// `repo_root` joined with a repository path, one component at a time.
+/// `repo_root` joined with a repository path, one component at a time, with `.` and `..`
+/// removed lexically: servers reject paths that are not normalised, and resolving symlinks here
+/// would change what the server reports back.
 pub fn absolute(repo_root: &Path, path: &RepoPath) -> PathBuf {
+    let mut absolute = PathBuf::new();
+    for component in repo_root.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                absolute.pop();
+            }
+            other => absolute.push(other),
+        }
+    }
     if path.is_root() {
-        return repo_root.to_owned();
+        return absolute;
     }
     path.as_str()
         .split('/')
-        .fold(repo_root.to_owned(), |dir, part| dir.join(part))
+        .fold(absolute, |dir, part| dir.join(part))
 }

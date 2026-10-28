@@ -71,9 +71,11 @@ impl<'a> Mapper<'a> {
         RepoPath::new(&text.join("/")).map_err(|_| Target::Unindexed)
     }
 
-    /// The innermost node whose selection holds `range.start`; else the first node whose
-    /// selection lies inside `range` (servers that return a whole declaration); else an impl
-    /// header; else the file node when `range` starts at the top of the file.
+    /// In order: the innermost node whose selection holds `range.start`; the file node for a
+    /// range spanning the whole file (a module); the first node whose selection lies inside
+    /// `range` (servers that return a whole declaration); an impl header; the one node of the
+    /// file named by the identifier at `range` (another declaration of it, such as an overload
+    /// signature); the file node for a range at the top of the file.
     pub fn locate(&self, uri: &Uri, range: Range) -> Target {
         let file = match self.repo_path(uri) {
             Ok(file) => file,
@@ -82,11 +84,16 @@ impl<'a> Mapper<'a> {
         let Some(view) = self.view.file(&file) else {
             return Target::Unindexed;
         };
-        let (Some(start), Some(end)) =
-            (view.index.offset(range.start), view.index.offset(range.end))
-        else {
+        let text = view.index.text();
+        let Some(start) = view.index.offset(range.start) else {
             return Target::Unmapped;
         };
+        let end = view
+            .index
+            .offset(range.end)
+            .map_or(text.len(), |end| end as usize)
+            .max(start as usize);
+        let top = range.start.line == 0 && range.start.character == 0;
         let holding = view
             .nodes
             .iter()
@@ -96,11 +103,16 @@ impl<'a> Mapper<'a> {
         if let Some((node, _)) = holding {
             return Target::Node(node.node_ref());
         }
+        if top && end >= text.trim_end().len() {
+            return Target::Node(view.file_node.clone());
+        }
         let inside = view
             .nodes
             .iter()
             .filter_map(|node| Some((node, node.selection?)))
-            .filter(|(_, sel)| start <= sel.start && sel.end <= end && start < end)
+            .filter(|(_, sel)| {
+                start <= sel.start && sel.end as usize <= end && (start as usize) < end
+            })
             .min_by_key(|(_, sel)| sel.start);
         if let Some((node, _)) = inside {
             return Target::Node(node.node_ref());
@@ -112,7 +124,15 @@ impl<'a> Mapper<'a> {
         {
             return Target::ImplHeader { file, index };
         }
-        if range.start.line == 0 && range.start.character == 0 {
+        let identifier = text.get(start as usize..end).unwrap_or_default();
+        let mut named = view
+            .nodes
+            .iter()
+            .filter(|node| node.selection.is_some() && node.name == identifier);
+        if let (Some(node), None) = (named.next(), named.next()) {
+            return Target::Node(node.node_ref());
+        }
+        if top {
             return Target::Node(view.file_node.clone());
         }
         Target::Unmapped

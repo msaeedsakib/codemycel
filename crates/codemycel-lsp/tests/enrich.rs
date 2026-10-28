@@ -370,6 +370,47 @@ async fn definition_maps_by_selection_range_containment() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn whole_file_and_other_declaration_ranges_map_to_their_nodes() {
+    let fixture = Fixture::new();
+    let circle = fixture.candidate("Circle", "run");
+    let call = fixture.candidate("helper", "area");
+    let lines = u32::try_from(LIB.lines().count()).unwrap();
+    let whole_file = json!([{"uri": format!("$ROOT/{FILE}"), "range":
+        {"start": {"line": 0, "character": 0}, "end": {"line": lines, "character": 0}}}]);
+    let scenario = json!({"responses": [
+        respond("textDocument/definition", fixture.position(&circle), whole_file),
+        respond("textDocument/definition", fixture.position(&call),
+            json!([fixture.location("pub fn run", "helper")])),
+    ]});
+    let report = fixture.enrich(scenario).await;
+    assert!(has_edge(
+        &report,
+        &node("src/lib.rs::run", NodeKind::Function),
+        EdgeKind::References,
+        &node("src/lib.rs", NodeKind::File)
+    ));
+    assert!(
+        has_edge(
+            &report,
+            &node("src/lib.rs::<Circle as Shape>::area", NodeKind::Method),
+            EdgeKind::Calls,
+            &node("src/lib.rs::helper", NodeKind::Function)
+        ),
+        "{:#?}",
+        report.edges
+    );
+}
+
+#[test]
+fn server_paths_are_normalised() {
+    let root = Path::new("/work/crates/index/../../fixtures/./demo");
+    assert_eq!(
+        codemycel_lsp::enrich::absolute(root, &RepoPath::new("src/lib.rs").unwrap()),
+        Path::new("/work/fixtures/demo/src/lib.rs")
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn definition_landing_in_impl_header_maps_to_self_type() {
     let fixture = Fixture::new();
     let call = fixture.candidate("helper", "area");
