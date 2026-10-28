@@ -44,7 +44,7 @@ pub fn run(_args: &StatusArgs, ctx: &Context) -> anyhow::Result<ExitCode> {
     Ok(ExitCode::Ok)
 }
 
-/// Spec §8.6 below `$HOME`: the nearest ancestor whose `.codemycel/` holds `index.db` or
+/// Below `$HOME`: the nearest ancestor whose `.codemycel/` holds `index.db` or
 /// `config.toml` (never the codemycel home), else the nearest holding `.git`, else the start.
 fn resolve_repo(start: Option<PathBuf>) -> anyhow::Result<PathBuf> {
     let start = match start {

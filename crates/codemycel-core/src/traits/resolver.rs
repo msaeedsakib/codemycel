@@ -1,6 +1,6 @@
 use crate::{Candidate, NodeRef, Occurrence, RepoPath, Verdict};
 
-/// A verified source: the SCIP importer or a language server (spec §7.3). Calls block; an
+/// A verified source: the SCIP importer or a language server. Calls block; an
 /// asynchronous implementation drives its own runtime.
 pub trait Resolver: Send + Sync {
     /// `"scip"` or `"lsp"`.

@@ -6,6 +6,7 @@ mod file;
 mod ids;
 mod kinds;
 mod node;
+mod package;
 mod parsed;
 mod repo_path;
 mod semantic_path;
@@ -22,6 +23,7 @@ pub use kinds::{
     UnresolvedReason, VerifiedBy,
 };
 pub use node::{Node, NodeRef, StoredNode};
+pub use package::Package;
 pub use parsed::{ParsedFile, SearchDoc};
 pub use repo_path::RepoPath;
 pub use semantic_path::SemanticPath;

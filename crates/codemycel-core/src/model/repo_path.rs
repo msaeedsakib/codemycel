@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::ModelError;
 
-/// A repository-relative path with forward slashes on every platform (spec §9).
+/// A repository-relative path with forward slashes on every platform.
 /// The empty path is the repository root.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

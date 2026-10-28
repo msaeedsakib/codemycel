@@ -140,7 +140,7 @@ pub trait StoreRead {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Exact, case-sensitive name match across all kinds (spec §10.2).
+    /// Exact, case-sensitive name match across all kinds.
     fn nodes_named(&self, name: &str) -> Result<Vec<StoredNode>> {
         let sql = format!("{NODE_SELECT} WHERE n.name = ?1 ORDER BY n.semantic_path, n.kind");
         let mut stmt = self.conn().prepare_cached(&sql)?;
@@ -211,8 +211,8 @@ pub trait StoreRead {
         Ok(count.unwrap_or(0))
     }
 
-    /// FTS5 matches for `query` (FTS5 query syntax), best first, scored with the column weights
-    /// of spec §10.1.
+    /// FTS5 matches for `query` (FTS5 query syntax), best first, scored by BM25 with
+    /// per-column weights.
     fn search_fts(&self, query: &str, limit: u32) -> Result<Vec<SearchHit>> {
         let mut stmt = self.conn().prepare_cached(
             "SELECT n.id, n.kind, n.name, f.path,

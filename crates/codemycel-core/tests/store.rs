@@ -6,8 +6,8 @@ use codemycel_core::store::{SCHEMA_VERSION, Store, StoreError, StoreRead, Tx};
 use codemycel_core::text::name_split;
 use codemycel_core::{
     ByteRange, Candidate, CandidateRole, Edge, EdgeKind, FileKind, FileRecord, ImplRecord,
-    Language, Node, NodeKind, NodeRef, Occurrence, RepoPath, Root, RootId, SearchDoc, SemanticPath,
-    Span, Unresolved, UnresolvedReason, VerifiedBy,
+    Language, Node, NodeKind, NodeRef, Occurrence, Package, RepoPath, Root, RootId, SearchDoc,
+    SemanticPath, Span, Unresolved, UnresolvedReason, VerifiedBy,
 };
 use tempfile::TempDir;
 
@@ -502,6 +502,78 @@ fn delete_file_cascades() {
         "src/b.rs:5:4\tcall\tprintln\texternal_dependency\n"
     );
     assert_eq!(store.search_fts("main", 10).unwrap().len(), 1);
+}
+
+#[test]
+fn package_rows_follow_their_manifest() {
+    let (_dir, _db, mut store) = fresh();
+    let manifest = repo("crate/Cargo.toml");
+    let workspace = NodeRef::new(
+        SemanticPath::for_package(&manifest).unwrap(),
+        NodeKind::Package,
+    );
+    let external = NodeRef::new(
+        SemanticPath::for_external_package("cargo", "uuid").unwrap(),
+        NodeKind::Package,
+    );
+    store
+        .transaction(|tx| {
+            tx.upsert_file(&FileRecord {
+                kind: FileKind::Manifest,
+                language: None,
+                ..file_record("crate/Cargo.toml", None)
+            })?;
+            let mut package_node = node(
+                "crate/Cargo.toml",
+                NodeKind::Package,
+                "crate/Cargo.toml",
+                (1, 1),
+            );
+            package_node.name = "core".to_owned();
+            let mut external_node = package_node.clone();
+            external_node.path = external.path.clone();
+            external_node.name = "uuid".to_owned();
+            external_node.file = None;
+            tx.insert_nodes(&[package_node, external_node])?;
+            tx.insert_packages(&[
+                Package {
+                    node: workspace.clone(),
+                    name: "core".to_owned(),
+                    version: Some("0.1.0".to_owned()),
+                    external: false,
+                    manifest: Some(manifest.clone()),
+                },
+                Package {
+                    node: external.clone(),
+                    name: "uuid".to_owned(),
+                    version: None,
+                    external: true,
+                    manifest: None,
+                },
+            ])
+        })
+        .unwrap();
+    let packages = |store: &Store| -> Vec<(String, bool, bool)> {
+        let mut stmt = store
+            .conn()
+            .prepare(
+                "SELECT name, external, manifest_file_id IS NOT NULL FROM packages ORDER BY name",
+            )
+            .unwrap();
+        stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(
+        packages(&store),
+        [
+            ("core".to_owned(), false, true),
+            ("uuid".to_owned(), true, false)
+        ]
+    );
+    store.transaction(|tx| tx.delete_file(&manifest)).unwrap();
+    assert_eq!(packages(&store), [("uuid".to_owned(), true, false)]);
 }
 
 #[test]

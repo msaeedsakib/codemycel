@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{ModelError, RepoPath};
 
-/// The human-readable identity of a node (spec §6.4). The node's full identity is this path
+/// The human-readable identity of a node. The node's full identity is this path
 /// together with its `NodeKind`; see `NodeRef`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

@@ -53,7 +53,6 @@ string_enum!(Language {
 });
 
 string_enum!(
-    /// Spec §6.1.
     NodeKind {
         File => "file",
         Module => "module",
@@ -78,7 +77,6 @@ string_enum!(
 );
 
 string_enum!(
-    /// Spec §6.3.
     EdgeKind {
         Contains => "contains",
         Defines => "defines",
@@ -105,7 +103,6 @@ string_enum!(VerifiedBy {
 });
 
 string_enum!(
-    /// Spec §6.5.
     CandidateRole {
         Call => "call",
         Type => "type",
@@ -118,7 +115,6 @@ string_enum!(
 );
 
 string_enum!(
-    /// Spec §6.3.
     UnresolvedReason {
         NoDefinition => "no_definition",
         ServerUnavailable => "server_unavailable",
@@ -136,7 +132,7 @@ string_enum!(FileKind {
 });
 
 string_enum!(
-    /// Why a file was listed but not parsed (spec §7.2, §8.2). `unaddressable_path` marks a path
+    /// Why a file was listed but not parsed. `unaddressable_path` marks a path
     /// with no semantic-path form (`a::b.rs`, `community:x`, `a.md#x`).
     SkipReason {
         Ignored => "ignored",
@@ -155,7 +151,7 @@ string_enum!(NoteKind {
 });
 
 string_enum!(
-    /// Where a community's display label came from (spec §6.6).
+    /// Where a community's display label came from.
     LabelSource {
         Folder => "folder",
         Prefix => "prefix",

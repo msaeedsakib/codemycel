@@ -1,4 +1,4 @@
-/// Splits an identifier into lowercase words joined by single spaces (spec §9, §10.1):
+/// Splits an identifier into lowercase words joined by single spaces:
 /// `HTTPServer` → `http server`, `rate_limiter` → `rate limiter`, `http2Server` → `http 2 server`.
 pub fn name_split(name: &str) -> String {
     let mut words: Vec<String> = Vec::new();

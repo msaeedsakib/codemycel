@@ -1,0 +1,7 @@
+crate/src/lib.rs:2:14	type	String	server_unavailable
+crate/src/lib.rs:5:33	type	Store	server_unavailable
+crate/src/lib.rs:6:4	type	Store	server_unavailable
+crate/src/lib.rs:7:19	call	to_owned	server_unavailable
+pkg/index.js:7:0	value	module	server_unavailable
+pkg/index.js:7:19	value	render	server_unavailable
+pkg/index.js:7:27	value	shared	server_unavailable
