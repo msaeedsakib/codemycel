@@ -17,6 +17,14 @@ fn paths(parsed: &ParsedFile) -> Vec<String> {
         .collect()
 }
 
+fn candidates(parsed: &ParsedFile) -> Vec<String> {
+    parsed
+        .candidates
+        .iter()
+        .map(|c| format!("{}:{} {} {}", c.at.line, c.at.col, c.role, c.text))
+        .collect()
+}
+
 #[test]
 fn trait_impl_methods_use_qualified_container() {
     let parsed = parse(
@@ -43,6 +51,71 @@ fn path_self_type_uses_qualified_container() {
             "src/lib.rs::ext (module)",
             "src/lib.rs::ext::<super::Foo>::a (method)",
             "src/lib.rs::ext::<Vec<crate::B>>::b (method)",
+        ]
+    );
+}
+
+#[test]
+fn blanket_impl_container_keeps_type_parameter() {
+    let parsed = parse("impl<T: Bound> Render for T {\n    fn render(&self) -> String {}\n}\n");
+    assert_eq!(
+        paths(&parsed),
+        ["src/lib.rs::<T as Render>::render (method)"]
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "1:8 type Bound",
+            "1:15 implements Render",
+            "2:24 type String"
+        ]
+    );
+}
+
+#[test]
+fn shadowed_local_is_not_a_candidate() {
+    let parsed = parse(
+        "fn config() -> u32 { 1 }\nfn shadowed(limit: u32) -> u32 {\n    let config = limit;\n    config + limit\n}\nfn global() -> u32 {\n    config() + LIMIT\n}\n",
+    );
+    assert_eq!(candidates(&parsed), ["7:4 call config", "7:15 value LIMIT"]);
+    assert_eq!(
+        parsed.candidates[0].enclosing.to_string(),
+        "src/lib.rs::global (function)"
+    );
+}
+
+#[test]
+fn use_paths_yield_import_candidates_per_leaf() {
+    let parsed = parse(
+        "use std::fmt;\nuse crate::a::{B, c::{D, E as F}, g::*};\npub use crate::shapes::{Circle, Square};\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "1:9 import fmt",
+            "2:15 import B",
+            "2:22 import D",
+            "2:25 import E",
+            "2:34 import g",
+            "3:24 export Circle",
+            "3:32 export Square",
+        ]
+    );
+}
+
+#[test]
+fn macro_token_trees_yield_calls_and_values() {
+    let parsed = parse(
+        "#[derive(Debug, Clone)]\nstruct S;\nfn f(x: u32) {\n    println!(\"{} {}\", total(x), a::b::LIMIT, x.len(), x.field, inner!(y), Shape::Empty);\n}\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "4:22 call total",
+            "4:38 value LIMIT",
+            "4:47 call len",
+            "4:70 value y",
+            "4:81 value Empty",
         ]
     );
 }
