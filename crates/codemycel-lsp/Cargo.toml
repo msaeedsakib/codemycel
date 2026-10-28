@@ -10,5 +10,26 @@ publish.workspace = true
 [dependencies]
 codemycel-core.workspace = true
 
+flate2.workspace = true
+futures.workspace = true
+lsp-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+ureq.workspace = true
+url.workspace = true
+zip.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true

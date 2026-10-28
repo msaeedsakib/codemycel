@@ -1,0 +1,11 @@
+{
+  "responses": [
+    {
+      "method": "textDocument/definition",
+      "uri": "src/emoji.rs",
+      "line": 0,
+      "character": 14,
+      "result": [{"uri": "$ROOT/src/target.rs", "range": {"start": {"line": 0, "character": 11}, "end": {"line": 0, "character": 15}}}]
+    }
+  ]
+}

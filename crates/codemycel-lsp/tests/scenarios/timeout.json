@@ -1,0 +1,10 @@
+{
+  "responses": [
+    {
+      "method": "textDocument/definition",
+      "uri": "src/a.rs",
+      "silent_times": 1,
+      "result": [{"uri": "$ROOT/src/b.rs", "range": {"start": {"line": 2, "character": 3}, "end": {"line": 2, "character": 6}}}]
+    }
+  ]
+}
