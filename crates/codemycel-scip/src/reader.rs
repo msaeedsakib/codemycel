@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use codemycel_core::RepoPath;
@@ -96,14 +96,36 @@ pub(crate) struct Document {
 }
 
 /// A loaded SCIP index: its documents by repository path, where each global symbol is defined,
-/// and which symbols implement which. Local symbols are dropped on load.
+/// the packages of the defined symbols, and which symbols implement which. Local symbols are
+/// dropped on load.
 #[derive(Clone, Debug)]
 pub struct ScipIndex {
     hash: String,
     pub(crate) documents: BTreeMap<RepoPath, Document>,
     pub(crate) definitions: HashMap<String, Vec<(RepoPath, Range)>>,
+    pub(crate) packages: HashSet<String>,
     pub(crate) implementers: HashMap<String, Vec<String>>,
     pub(crate) covered: BTreeSet<RepoPath>,
+}
+
+/// A global symbol's scheme and package: its first four space-separated fields, where a double
+/// space is an escaped space inside a field.
+pub(crate) fn package(symbol: &str) -> Option<&str> {
+    let mut fields = 0;
+    let mut chars = symbol.char_indices().peekable();
+    while let Some((at, c)) = chars.next() {
+        if c != ' ' {
+            continue;
+        }
+        if chars.next_if(|(_, next)| *next == ' ').is_some() {
+            continue;
+        }
+        fields += 1;
+        if fields == 4 {
+            return Some(&symbol[..at]);
+        }
+    }
+    None
 }
 
 impl ScipIndex {
@@ -167,10 +189,16 @@ impl ScipIndex {
             implementer.sort();
             implementer.dedup();
         }
+        let packages = definitions
+            .keys()
+            .filter_map(|symbol| package(symbol))
+            .map(ToOwned::to_owned)
+            .collect();
         Self {
             hash,
             documents,
             definitions,
+            packages,
             implementers,
             covered: BTreeSet::new(),
         }

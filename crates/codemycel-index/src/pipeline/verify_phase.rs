@@ -4,8 +4,9 @@ use std::path::Path;
 use codemycel_core::config::Config;
 use codemycel_core::store::Tx;
 use codemycel_core::{
-    Coverage, DegradeReason, Edge, EdgeKind, NodeKind, RepoPath, Resolver, ResolverSource, Root,
-    RootStatus, ServerInfo, SourceFile, Unresolved, UnresolvedReason, Verdict, VerifiedBy,
+    ByteRange, Candidate, CandidateRole, Coverage, DegradeReason, Edge, EdgeKind, NodeKind,
+    NodeRef, RepoPath, Resolver, ResolverSource, Root, RootStatus, ServerInfo, SourceFile,
+    Unresolved, UnresolvedReason, Verdict, VerifiedBy,
 };
 use codemycel_lsp::{EnrichOptions, FileView, IndexView, LspResolver, Provisioner, ServerLaunch};
 
@@ -97,7 +98,7 @@ pub fn run(
         let mut edges = Vec::new();
         for file in &scip_covered {
             if let Some(file) = view.file(file) {
-                scip_file(scip, file, &mut edges, &mut verified.unresolved);
+                scip_file(scip, file, &view, &mut edges, &mut verified.unresolved);
             }
         }
         let every_file = per_root.values().flatten().filter_map(|f| view.file(f));
@@ -126,20 +127,20 @@ pub fn run(
                 config_diagnostics: Vec::new(),
             }
         } else {
-            let scip_files: Vec<&FileView> = files
+            let server = |root: &Root| registry.server_for(root.language).map(|s| s.name());
+            let scip_covered = &scip_covered;
+            let others: Vec<&FileView> = per_root
                 .iter()
-                .filter(|file| scip_covered.contains(file))
+                .filter(|(other, _)| server(other).is_some() && server(other) == server(root))
+                .flat_map(|(other, files)| {
+                    files
+                        .iter()
+                        .filter(move |file| *other != root || scip_covered.contains(*file))
+                })
                 .filter_map(|file| view.file(file))
                 .collect();
             let lsp = enrich_root(
-                repo_root,
-                config,
-                root,
-                &lsp_files,
-                &scip_files,
-                &view,
-                registry,
-                sources,
+                repo_root, config, root, &lsp_files, &others, &view, registry, sources,
             );
             let coverage = match (lsp.degraded.is_none(), has_scip) {
                 (true, true) => Coverage::ScipAndLsp,
@@ -191,15 +192,16 @@ struct RootOutcome {
     config_diagnostics: Vec<String>,
 }
 
-/// Enriches the root's LSP files. Traits and interfaces in the root's SCIP files are asked for
-/// their implementers too, since an implementer in an LSP file is this server's to write.
+/// Enriches the root's LSP files. Traits and interfaces in `others`, the files this server did
+/// not enrich but can answer for, are asked for their implementers too, since an implementer in
+/// one of the root's LSP files is this server's to write.
 #[allow(clippy::too_many_arguments)]
 fn enrich_root(
     repo_root: &Path,
     config: &Config,
     root: &Root,
     files: &[RepoPath],
-    scip_files: &[&FileView],
+    others: &[&FileView],
     view: &IndexView,
     registry: &Registry,
     sources: &Sources<'_>,
@@ -258,7 +260,7 @@ fn enrich_root(
         Err(reason) => return degraded(reason, Some(info)),
     };
     let mut report = resolver.enrich_files(files);
-    for file in scip_files {
+    for file in others {
         report
             .edges
             .extend(implementer_edges(&resolver, file, VerifiedBy::Lsp));
@@ -278,7 +280,8 @@ fn enrich_root(
 }
 
 /// `implements` edges for every trait and interface of `file`, and `overrides` edges for their
-/// methods, as `resolver` reports them.
+/// methods, as `resolver` reports them. Only structs, enums, classes and type aliases implement,
+/// and only methods override.
 fn implementer_edges(
     resolver: &dyn Resolver,
     file: &FileView,
@@ -298,12 +301,16 @@ fn implementer_edges(
         }
         let parent = node.node_ref();
         for implementer in resolver.implementers(&parent) {
-            edges.push(edge(implementer, parent.clone(), EdgeKind::Implements));
+            if is_implementer(implementer.kind) {
+                edges.push(edge(implementer, parent.clone(), EdgeKind::Implements));
+            }
         }
         for method in file.members(&parent) {
             if method.kind == NodeKind::Method {
                 for overrider in resolver.implementers(method) {
-                    edges.push(edge(overrider, method.clone(), EdgeKind::Overrides));
+                    if overrider.kind == NodeKind::Method {
+                        edges.push(edge(overrider, method.clone(), EdgeKind::Overrides));
+                    }
                 }
             }
         }
@@ -311,14 +318,102 @@ fn implementer_edges(
     edges
 }
 
-/// Candidates through `resolve`, then `outgoing_calls` for functions and methods.
+/// Edges of the impl blocks in `file` whose trait clause has a confirmed verdict: `implements`
+/// from the self type to the trait, sited at the clause, when the self type is confirmed as a
+/// type that implements, and `overrides` from each method in the block to the trait's method of
+/// the same name.
+fn impl_block_edges(view: &IndexView, file: &FileView, verdicts: &[Verdict]) -> Vec<Edge> {
+    let confirmed: Vec<(&Candidate, u32, &NodeRef)> = file
+        .candidates
+        .iter()
+        .zip(verdicts)
+        .filter_map(|(candidate, verdict)| match verdict {
+            Verdict::Confirmed { target } => {
+                let position = file.index.to_lsp(candidate.at)?;
+                Some((candidate, file.index.offset(position)?, target))
+            }
+            Verdict::Unresolved { .. } => None,
+        })
+        .collect();
+    let inside = |range: ByteRange, at: u32| range.start <= at && at < range.end;
+    let mut edges = Vec::new();
+    for record in &file.impl_records {
+        let clause = confirmed.iter().find(|(candidate, at, _)| {
+            candidate.role == CandidateRole::Implements
+                && !is_implementer(candidate.enclosing.kind)
+                && inside(record.header, *at)
+        });
+        let Some((clause, _, parent)) = clause else {
+            continue;
+        };
+        let self_type = confirmed
+            .iter()
+            .find(|(_, at, _)| inside(record.self_type_selection, *at));
+        if let Some((_, _, implementer)) = self_type
+            && is_implementer(implementer.kind)
+        {
+            edges.push(Edge {
+                src: (*implementer).clone(),
+                dst: (*parent).clone(),
+                kind: EdgeKind::Implements,
+                verified_by: VerifiedBy::Scip,
+                occurrences: vec![clause.at],
+            });
+        }
+        let parent_methods: Vec<&NodeRef> = parent
+            .path
+            .file()
+            .and_then(|path| RepoPath::new(path).ok())
+            .and_then(|path| view.file(&path))
+            .map(|parent_file| {
+                parent_file
+                    .members(parent)
+                    .iter()
+                    .filter(|m| m.kind == NodeKind::Method)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let block_methods = file.nodes.iter().filter(|n| {
+            n.kind == NodeKind::Method
+                && n.selection
+                    .is_some_and(|s| record.body.start <= s.start && s.end <= record.body.end)
+        });
+        for method in block_methods {
+            for parent_method in parent_methods
+                .iter()
+                .filter(|m| m.path.name() == method.name)
+            {
+                edges.push(Edge {
+                    src: method.node_ref(),
+                    dst: (*parent_method).clone(),
+                    kind: EdgeKind::Overrides,
+                    verified_by: VerifiedBy::Scip,
+                    occurrences: Vec::new(),
+                });
+            }
+        }
+    }
+    edges
+}
+
+fn is_implementer(kind: NodeKind) -> bool {
+    matches!(
+        kind,
+        NodeKind::Struct | NodeKind::Enum | NodeKind::Class | NodeKind::TypeAlias
+    )
+}
+
+/// Candidates through `resolve`, then the file's impl blocks, then `outgoing_calls` for
+/// functions and methods.
 fn scip_file(
     scip: &dyn Resolver,
     file: &FileView,
+    view: &IndexView,
     edges: &mut Vec<Edge>,
     unresolved: &mut Vec<Unresolved>,
 ) {
     let verdicts = scip.resolve(&file.candidates);
+    edges.extend(impl_block_edges(view, file, &verdicts));
     for (index, candidate) in file.candidates.iter().enumerate() {
         match verdicts.get(index) {
             Some(Verdict::Confirmed { target }) => {

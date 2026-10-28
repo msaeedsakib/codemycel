@@ -224,6 +224,163 @@ fn edge_discovered_from_other_side_is_written_only_by_owner() {
 }
 
 #[test]
+fn implementer_in_another_root_is_written_by_its_own_root() {
+    let repo = Repo::new(&[
+        (
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\n",
+        ),
+        ("a/src/lib.rs", "pub trait T {\n    fn go(&self);\n}\n"),
+        (
+            "b/Cargo.toml",
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\n",
+        ),
+        (
+            "b/src/lib.rs",
+            "pub struct S;\n\nimpl a::T for S {\n    fn go(&self) {}\n}\n",
+        ),
+    ]);
+    let at = repo.location("a/src/lib.rs", "pub trait ", "T")["range"]["start"].clone();
+    let implementation = json!({"method": "textDocument/implementation", "uri": "a/src/lib.rs",
+        "line": at["line"], "character": at["character"],
+        "result": [repo.location("b/src/lib.rs", "pub struct ", "S")]});
+    let adapter = FakeAdapter::new(&repo.scenario(json!([implementation])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), None);
+    let trait_t = node("a/src/lib.rs::T", NodeKind::Trait);
+    let struct_s = node("b/src/lib.rs::S", NodeKind::Struct);
+    let id = run
+        .store
+        .node_by_semantic_path(&struct_s.path, Some(struct_s.kind))
+        .unwrap()[0]
+        .id;
+    let implements: Vec<_> = run
+        .store
+        .edges_from(id, &[EdgeKind::Implements])
+        .unwrap()
+        .into_iter()
+        .filter(|e| e.edge.dst == trait_t)
+        .collect();
+    assert_eq!(implements.len(), 1, "{implements:#?}");
+    assert_eq!(implements[0].edge.verified_by, VerifiedBy::Lsp);
+    let root_b = run
+        .store
+        .roots()
+        .unwrap()
+        .into_iter()
+        .find(|r| r.root.path.as_str() == "b")
+        .unwrap();
+    assert_eq!(implements[0].root_id, Some(root_b.id));
+    let launches = repo.launches();
+    let (_, received) = launches
+        .iter()
+        .find(|(root, _)| root.ends_with("/b"))
+        .unwrap();
+    assert!(received.iter().any(|message| {
+        message["method"] == "textDocument/implementation"
+            && message["params"]["textDocument"]["uri"] == repo.uri("a/src/lib.rs")
+    }));
+}
+
+#[test]
+fn scip_impl_block_yields_implements_and_overrides() {
+    let repo = Repo::new(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "mod b;\n\npub struct S;\n\nimpl b::T for S {\n    fn go(&self) {}\n}\n",
+        ),
+        ("src/b.rs", B),
+    ]);
+    let trait_t = node("src/b.rs::T", NodeKind::Trait);
+    let struct_s = node("src/lib.rs::S", NodeKind::Struct);
+    let mut scip = StubScip::default();
+    for file in ["src/lib.rs", "src/b.rs"] {
+        scip.covers.insert(RepoPath::new(file).unwrap());
+    }
+    for (text, target) in [("T", &trait_t), ("S", &struct_s)] {
+        scip.verdicts.insert(
+            ("src/lib.rs".to_owned(), text.to_owned()),
+            Verdict::Confirmed {
+                target: target.clone(),
+            },
+        );
+    }
+    let adapter = FakeAdapter::new(&repo.scenario(json!([])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), Some(&scip));
+    let id = |n: &NodeRef| {
+        run.store
+            .node_by_semantic_path(&n.path, Some(n.kind))
+            .unwrap()[0]
+            .id
+    };
+    let implements = run
+        .store
+        .edges_from(id(&struct_s), &[EdgeKind::Implements])
+        .unwrap();
+    assert_eq!(implements.len(), 1, "{implements:#?}");
+    assert_eq!(implements[0].edge.dst, trait_t);
+    assert_eq!(implements[0].edge.verified_by, VerifiedBy::Scip);
+    assert_eq!(
+        implements[0].edge.occurrences,
+        [Occurrence { line: 5, col: 8 }]
+    );
+    let overrides = run
+        .store
+        .edges_to(
+            id(&node("src/b.rs::T::go", NodeKind::Method)),
+            &[EdgeKind::Overrides],
+        )
+        .unwrap();
+    assert_eq!(overrides.len(), 1, "{overrides:#?}");
+    assert_eq!(overrides[0].edge.src.kind, NodeKind::Method);
+    assert_eq!(overrides[0].edge.src.path.name(), "go");
+    assert_ne!(overrides[0].edge.src, overrides[0].edge.dst);
+    assert_eq!(overrides[0].edge.verified_by, VerifiedBy::Scip);
+    assert!(overrides[0].edge.occurrences.is_empty());
+}
+
+#[test]
+fn scip_implementers_are_kept_only_for_implementing_kinds() {
+    let repo = Repo::new(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "mod b;\n\npub struct S;\n\npub trait U {\n    fn go(&self);\n}\n",
+        ),
+        ("src/b.rs", B),
+    ]);
+    let trait_t = node("src/b.rs::T", NodeKind::Trait);
+    let t_go = node("src/b.rs::T::go", NodeKind::Method);
+    let struct_s = node("src/lib.rs::S", NodeKind::Struct);
+    let trait_u = node("src/lib.rs::U", NodeKind::Trait);
+    let u_go = node("src/lib.rs::U::go", NodeKind::Method);
+    let helper = node("src/b.rs::helper", NodeKind::Function);
+    let mut scip = StubScip::default();
+    for file in ["src/lib.rs", "src/b.rs"] {
+        scip.covers.insert(RepoPath::new(file).unwrap());
+    }
+    scip.implementers
+        .insert(trait_t.clone(), vec![struct_s.clone(), trait_u.clone()]);
+    scip.implementers
+        .insert(t_go.clone(), vec![u_go.clone(), helper.clone()]);
+    let adapter = FakeAdapter::new(&repo.scenario(json!([])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), Some(&scip));
+    assert_eq!(
+        edges_between(&run, &struct_s, EdgeKind::Implements, &trait_t),
+        [VerifiedBy::Scip]
+    );
+    assert!(edges_between(&run, &trait_u, EdgeKind::Implements, &trait_t).is_empty());
+    assert_eq!(
+        edges_between(&run, &u_go, EdgeKind::Overrides, &t_go),
+        [VerifiedBy::Scip]
+    );
+    assert!(edges_between(&run, &helper, EdgeKind::Overrides, &t_go).is_empty());
+}
+
+#[test]
 fn definition_in_unparsed_file_is_unindexed_file() {
     let repo = Repo::new(&[
         ("crate/Cargo.toml", MANIFEST),

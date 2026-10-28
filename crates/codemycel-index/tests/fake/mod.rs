@@ -194,6 +194,27 @@ impl Repo {
         std::fs::read_to_string(self.log_path()).unwrap_or_default()
     }
 
+    /// The messages of each server launch in launch order, with the root URI it was initialized
+    /// with. Launches must not overlap.
+    pub fn launches(&self) -> Vec<(String, Vec<Value>)> {
+        let mut launches: Vec<(String, Vec<Value>)> = Vec::new();
+        let messages = self
+            .log()
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .collect::<Vec<_>>();
+        for message in messages {
+            if message["method"] == "initialize" {
+                let root = message["params"]["rootUri"].as_str().unwrap_or_default();
+                launches.push((root.trim_end_matches('/').to_owned(), Vec::new()));
+            }
+            if let Some((_, received)) = launches.last_mut() {
+                received.push(message);
+            }
+        }
+        launches
+    }
+
     /// The URIs the server was sent `didOpen` for, in order.
     pub fn opened(&self) -> Vec<String> {
         self.log()

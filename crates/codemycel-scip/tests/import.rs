@@ -230,6 +230,53 @@ fn candidate_without_occurrence_is_no_definition() {
 }
 
 #[test]
+fn undefined_symbol_is_unmapped_inside_a_defined_package_and_external_outside() {
+    let a = document(
+        "src/a.rs",
+        vec![
+            occ(
+                A,
+                "pub struct ",
+                "S",
+                "rust-analyzer cargo demo 0.1.0 a/S#",
+                true,
+            ),
+            occ(
+                A,
+                "impl T for ",
+                "S",
+                "rust-analyzer cargo demo 0.1.0 a/impl#[S]",
+                false,
+            ),
+            occ(A, "impl ", "T", "rust-analyzer cargo other 1.0.0 T#", false),
+        ],
+        Vec::new(),
+    );
+    let raw = types::Index {
+        documents: vec![a],
+        ..Default::default()
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let index = ScipImporter::load(&write_index(dir.path(), &raw)).unwrap();
+    let parsed = parsed();
+    let files = sources(&parsed);
+    let resolver = index.bind(&files);
+    let self_type = candidate(&parsed.a.1, "S");
+    let foreign = candidate(&parsed.a.1, "T");
+    assert_eq!(
+        resolver.resolve(&[self_type.clone(), foreign.clone()]),
+        [
+            Verdict::Unresolved {
+                reason: UnresolvedReason::Unmapped
+            },
+            Verdict::Unresolved {
+                reason: UnresolvedReason::ExternalDependency
+            },
+        ]
+    );
+}
+
+#[test]
 fn implementation_relationship_yields_implements_and_overrides() {
     let (_dir, index) = loaded();
     let parsed = parsed();

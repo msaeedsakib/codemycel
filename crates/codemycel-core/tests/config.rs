@@ -208,4 +208,14 @@ fn config_writer_changes_only_the_target_key() {
     write_repo_config(repo.path(), "[index]\nignore = []\n");
     config::ConfigWriter::set_scip_commit(repo.path(), "sha").unwrap();
     assert_eq!(read(), "[index]\nignore = []\n\n[scip]\ncommit = \"sha\"\n");
+
+    write_repo_config(
+        repo.path(),
+        "[scip]  # imported index\npath = \"out/index.scip\"\n",
+    );
+    config::ConfigWriter::set_scip_commit(repo.path(), "sha").unwrap();
+    assert_eq!(
+        read(),
+        "[scip]  # imported index\ncommit = \"sha\"\npath = \"out/index.scip\"\n"
+    );
 }

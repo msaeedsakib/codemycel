@@ -31,7 +31,8 @@ impl ConfigWriter {
 fn set_key(text: &str, table: &str, key: &str, line: &str) -> String {
     let mut lines: Vec<String> = text.lines().map(ToOwned::to_owned).collect();
     let header = format!("[{table}]");
-    let Some(start) = lines.iter().position(|l| l.trim() == header) else {
+    let is_header = |l: &str| l.split_once('#').map_or(l, |(before, _)| before).trim() == header;
+    let Some(start) = lines.iter().position(|l| is_header(l)) else {
         let mut out = text.to_owned();
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
