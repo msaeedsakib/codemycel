@@ -30,13 +30,21 @@ jobs:
             runner: macos-15
           - target: x86_64-pc-windows-msvc
             runner: windows-2025
+    env:
+      CODEMYCEL_REQUIRE_SERVERS: "1"
     steps:
       - uses: actions/checkout@v7
       - run: rustup toolchain install
+      - run: rustup component add rust-analyzer
+      - name: codemycel home
+        shell: bash
+        run: echo "CODEMYCEL_HOME=$RUNNER_TEMP/codemycel-home" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
       - run: cargo build --workspace --locked
+      - name: download language servers into the codemycel home
+        run: cargo test --workspace --locked -- --ignored downloads_and_validates
       - run: cargo test --workspace --locked
 
   lint:
