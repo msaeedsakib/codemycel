@@ -34,3 +34,7 @@ impl<T: Clone> Wrapper<T> {
 pub fn parse_all<T: std::str::FromStr>(items: &[&str]) -> Vec<T> {
     items.iter().filter_map(|item| item.parse::<T>().ok()).collect()
 }
+
+pub fn zeros<const N: usize>() -> [u8; N] {
+    [0; N]
+}

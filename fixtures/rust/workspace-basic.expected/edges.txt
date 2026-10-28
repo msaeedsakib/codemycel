@@ -5,6 +5,7 @@ crates/cli/Cargo.toml (package)	depends_on	package:cargo:async-trait (package)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::config (function)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::main (function)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::memory (module)	0
+crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::rebinds (function)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::shadowed (function)	0
 crates/cli/src/main.rs (file)	contains	crates/cli/src/main.rs::uses_global (function)	0
 crates/cli/src/memory.rs (file)	contains	crates/cli/src/memory.rs::<MemoryStore as Store>::load (method)	0
@@ -23,13 +24,17 @@ crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::<Circle
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::<Circle as fmt::Debug>::fmt (method)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::<Circle as fmt::Display>::fmt (method)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Area (trait)	0
+crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Bits (struct)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Circle (struct)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Point (struct)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::Shape (enum)	0
 crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::sides (function)	0
+crates/core/src/geometry.rs (file)	contains	crates/core/src/geometry.rs::tests (module)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::area (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::describe (method)	0
 crates/core/src/geometry.rs::Area (trait)	contains	crates/core/src/geometry.rs::Area::name (method)	0
+crates/core/src/geometry.rs::Bits (struct)	contains	crates/core/src/geometry.rs::Bits::float (field)	0
+crates/core/src/geometry.rs::Bits (struct)	contains	crates/core/src/geometry.rs::Bits::int (field)	0
 crates/core/src/geometry.rs::Circle (struct)	contains	crates/core/src/geometry.rs::Circle::center (field)	0
 crates/core/src/geometry.rs::Circle (struct)	contains	crates/core/src/geometry.rs::Circle::radius (field)	0
 crates/core/src/geometry.rs::Point (struct)	contains	crates/core/src/geometry.rs::Point::x (field)	0
@@ -38,6 +43,7 @@ crates/core/src/geometry.rs::Shape (enum)	contains	crates/core/src/geometry.rs::
 crates/core/src/geometry.rs::Shape (enum)	contains	crates/core/src/geometry.rs::Shape::Round (enum_member)	0
 crates/core/src/geometry.rs::Shape (enum)	contains	crates/core/src/geometry.rs::Shape::Square (enum_member)	0
 crates/core/src/geometry.rs::Shape::Square (enum_member)	contains	crates/core/src/geometry.rs::Shape::Square::side (field)	0
+crates/core/src/geometry.rs::tests (module)	defines	crates/core/src/geometry.rs::tests::squares_have_four_sides (function)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::GREETING (constant)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::MAX_SHAPES (constant)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::Wrapper (struct)	0
@@ -49,6 +55,7 @@ crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::parse_all (functi
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::render (module)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::store (module)	0
 crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::total_area (function)	0
+crates/core/src/lib.rs (file)	contains	crates/core/src/lib.rs::zeros (function)	0
 crates/core/src/lib.rs::Wrapper (struct)	contains	crates/core/src/lib.rs::Wrapper::inner (field)	0
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::<T as Render>::render (method)	0
 crates/core/src/render.rs (file)	contains	crates/core/src/render.rs::Canvas (struct)	0

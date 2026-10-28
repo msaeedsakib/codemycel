@@ -58,3 +58,19 @@ pub fn sides(shape: &Shape) -> u32 {
         Shape::Empty => 0,
     }
 }
+
+#[repr(C)]
+pub union Bits {
+    pub int: u32,
+    pub float: f32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn squares_have_four_sides() {
+        assert_eq!(sides(&Shape::Square { side: 1.0 }), 4);
+    }
+}
