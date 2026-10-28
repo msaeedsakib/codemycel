@@ -56,6 +56,35 @@ pub fn index_fixture_with(dir: &Path, registry: Registry) -> FixtureIndex {
     }
 }
 
+/// A copy of a fixture in a temporary directory, for runs whose servers write into the tree
+/// (rust-analyzer's `Cargo.lock` and `target/`). Diff its dumps against the original's
+/// expected files.
+pub fn fixture_copy(source: &Path) -> (TempDir, PathBuf) {
+    fn copy_dir(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let dest = to.join(entry.file_name());
+            let kind = entry.file_type().unwrap();
+            if kind.is_symlink() {
+                let target = std::fs::read_link(entry.path()).unwrap();
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(target, dest).unwrap();
+                #[cfg(windows)]
+                std::os::windows::fs::symlink_dir(target, dest).unwrap();
+            } else if kind.is_dir() {
+                copy_dir(&entry.path(), &dest);
+            } else {
+                std::fs::copy(entry.path(), dest).unwrap();
+            }
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let copy = temp.path().join(source.file_name().unwrap());
+    copy_dir(source, &copy);
+    (temp, copy)
+}
+
 /// `Pipeline::run` with `registry`'s servers, found by `provisioner`, and no SCIP index.
 pub fn index_fixture_full(
     dir: &Path,

@@ -1,4 +1,5 @@
 use codemycel_core::{Language, LanguageAdapter, ServerAdapter};
+use codemycel_lsp::adapters::rust_analyzer::RustAnalyzer;
 use codemycel_parse::rust::RustAdapter;
 use codemycel_parse::typescript::{JavaScriptAdapter, TypeScriptAdapter};
 
@@ -16,6 +17,7 @@ impl Default for Registry {
             Box::new(TypeScriptAdapter::new()),
             Box::new(JavaScriptAdapter::new()),
         ])
+        .with_servers(vec![(Language::Rust, Box::new(RustAnalyzer::new()))])
     }
 }
 
