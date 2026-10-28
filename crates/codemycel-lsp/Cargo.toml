@@ -29,6 +29,7 @@ zip.workspace = true
 nix.workspace = true
 
 [dev-dependencies]
+codemycel-parse.workspace = true
 tempfile.workspace = true
 
 [lints]

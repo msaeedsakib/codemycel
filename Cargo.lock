@@ -288,6 +288,7 @@ name = "codemycel-lsp"
 version = "0.1.0"
 dependencies = [
  "codemycel-core",
+ "codemycel-parse",
  "flate2",
  "futures",
  "lsp-types",
