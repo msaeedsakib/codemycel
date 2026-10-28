@@ -390,6 +390,39 @@ fn scip_impl_block_yields_implements_and_overrides() {
 }
 
 #[test]
+fn scip_reference_self_type_implements_through_its_type_identifier() {
+    let repo = Repo::new(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "mod b;\n\npub struct S;\n\nimpl b::T for &S {\n    fn go(&self) {}\n}\n",
+        ),
+        ("src/b.rs", B),
+    ]);
+    let trait_t = node("src/b.rs::T", NodeKind::Trait);
+    let struct_s = node("src/lib.rs::S", NodeKind::Struct);
+    let mut scip = StubScip::default();
+    for file in ["src/lib.rs", "src/b.rs"] {
+        scip.covers.insert(RepoPath::new(file).unwrap());
+    }
+    for (text, target) in [("T", &trait_t), ("S", &struct_s)] {
+        scip.verdicts.insert(
+            ("src/lib.rs".to_owned(), text.to_owned()),
+            Verdict::Confirmed {
+                target: target.clone(),
+            },
+        );
+    }
+    let adapter = FakeAdapter::new(&repo.scenario(json!([])));
+    let config = repo.config();
+    let run = run(&repo, adapter, provisioner(&repo, &config), Some(&scip));
+    assert_eq!(
+        edges_between(&run, &struct_s, EdgeKind::Implements, &trait_t),
+        [VerifiedBy::Scip]
+    );
+}
+
+#[test]
 fn scip_implementers_are_kept_only_for_implementing_kinds() {
     let repo = Repo::new(&[
         ("Cargo.toml", MANIFEST),

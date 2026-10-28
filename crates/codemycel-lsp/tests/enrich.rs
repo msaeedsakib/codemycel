@@ -546,6 +546,62 @@ async fn implementation_on_trait_landing_in_impl_block_maps_to_self_type() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn reference_self_type_is_defined_at_its_type_identifier() {
+    let fixture = Fixture::with(
+        "\
+pub trait Render {
+    fn draw(&self);
+}
+
+pub struct Canvas;
+
+impl Render for &Canvas {
+    fn draw(&self) {}
+}
+",
+    );
+    let position = |anchor: &str, needle: &str| -> Position {
+        serde_json::from_value(fixture.range(anchor, needle)["start"].clone()).unwrap()
+    };
+    let render_at = position("pub trait ", "Render");
+    let canvas_at = position("impl Render for &", "Canvas");
+    let log = fixture.root().join("messages.log");
+    let scenario = json!({
+        "log_file": log,
+        "responses": [
+            respond("textDocument/implementation", render_at,
+                json!([fixture.location("impl Render for ", "&Canvas")])),
+            respond("textDocument/definition", canvas_at,
+                json!([fixture.location("pub struct ", "Canvas")])),
+        ],
+    });
+    let report = fixture.enrich(scenario).await;
+    let header_start = position("impl Render for ", "&Canvas");
+    let definitions: Vec<Value> = std::fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|message| message["method"] == "textDocument/definition")
+        .map(|message| message["params"]["position"].clone())
+        .collect();
+    assert!(definitions.contains(&json!(canvas_at)), "{definitions:#?}");
+    assert!(
+        !definitions.contains(&json!(header_start)),
+        "{definitions:#?}"
+    );
+    assert!(
+        has_edge(
+            &report,
+            &node("src/lib.rs::Canvas", NodeKind::Struct),
+            EdgeKind::Implements,
+            &node("src/lib.rs::Render", NodeKind::Trait)
+        ),
+        "{:#?}",
+        report.edges
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn external_definition_is_external_dependency() {
     let fixture = Fixture::new();
     let outside = tempfile::tempdir().unwrap();

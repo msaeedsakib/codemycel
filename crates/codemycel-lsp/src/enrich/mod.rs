@@ -528,8 +528,8 @@ impl<'a> Enricher<'a> {
         Ok(verdict)
     }
 
-    /// The node an impl record's self type is defined as, through `definition` on the type's
-    /// identifier in the header.
+    /// The node an impl record's self type is defined as, through `definition` at the first
+    /// candidate inside the self type, or at the self type's start when it holds none.
     async fn self_type(
         &self,
         client: &LspClient,
@@ -542,7 +542,19 @@ impl<'a> Enricher<'a> {
         let Some(record) = view.impl_records.get(index) else {
             return Ok(None);
         };
-        let Some(position) = view.index.position(record.self_type_selection.start) else {
+        let selection = record.self_type_selection;
+        let first_candidate = view
+            .candidates
+            .iter()
+            .filter_map(|candidate| {
+                let position = view.index.to_lsp(candidate.at)?;
+                let offset = view.index.offset(position)?;
+                (selection.start <= offset && offset < selection.end).then_some((offset, position))
+            })
+            .min_by_key(|(offset, _)| *offset)
+            .map(|(_, position)| position);
+        let Some(position) = first_candidate.or_else(|| view.index.position(selection.start))
+        else {
             return Ok(None);
         };
         let uri = self.uri(file).map_err(|_| Failure::Failed)?;
