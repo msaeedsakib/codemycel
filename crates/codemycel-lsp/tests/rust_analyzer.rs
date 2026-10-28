@@ -2,7 +2,8 @@
 
 use std::time::Duration;
 
-use codemycel_core::config::{Config, ServerConfig};
+use codemycel_core::config::paths::HOME_ENV;
+use codemycel_core::config::{Config, ServerConfig, home_dir};
 use codemycel_core::{ReadinessStrategy, ServerAdapter, ServerSource};
 use codemycel_lsp::Provisioner;
 use codemycel_lsp::adapters::rust_analyzer::RustAnalyzer;
@@ -62,16 +63,26 @@ fn failing_version_command_is_rejected() {
     assert!(reason.contains("Unknown binary"), "{reason}");
 }
 
+/// Downloads into `CODEMYCEL_HOME` when it is set, so CI can pre-fetch the server into its
+/// cache; otherwise into a temporary home.
 #[test]
 #[ignore = "downloads the pinned rust-analyzer release"]
 fn rust_analyzer_downloads_and_validates() {
-    let home = tempfile::tempdir().unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let home = if std::env::var_os(HOME_ENV).is_some_and(|v| !v.is_empty()) {
+        home_dir().unwrap()
+    } else {
+        temp.path().to_owned()
+    };
     let adapter = RustAnalyzer::new();
-    let located = Provisioner::new(&Config::default(), home.path().to_owned(), true)
+    let located = Provisioner::new(&Config::default(), home.clone(), true)
         .with_search_path(None)
         .locate(&adapter)
         .unwrap();
-    assert_eq!(located.source, ServerSource::Download);
-    assert!(located.path.starts_with(home.path()), "{located:?}");
+    assert!(
+        matches!(located.source, ServerSource::Download | ServerSource::Cache),
+        "{located:?}"
+    );
+    assert!(located.path.starts_with(&home), "{located:?}");
     assert!(!located.version.is_empty());
 }
