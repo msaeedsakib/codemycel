@@ -1,0 +1,8 @@
+{
+  // The shared library every other package imports by name.
+  "compilerOptions": {
+    "strict": true,
+    "composite": true,
+  },
+  "include": ["src"],
+}
