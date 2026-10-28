@@ -1,6 +1,7 @@
 //! The Rust language adapter (spec §7.1).
 
 mod hooks;
+mod roots;
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -56,8 +57,7 @@ impl LanguageAdapter for RustAdapter {
         repo_root: &Path,
         files: &[RepoPath],
     ) -> Result<Vec<Root>, AdapterError> {
-        let _ = (repo_root, files);
-        Ok(Vec::new())
+        Ok(roots::detect(repo_root, files))
     }
 
     fn parse(&self, file: &RepoPath, bytes: &[u8]) -> Result<ParsedFile, AdapterError> {
