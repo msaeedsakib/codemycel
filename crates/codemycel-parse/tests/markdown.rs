@@ -51,6 +51,27 @@ fn headings_become_nodes_with_unique_slugs() {
 }
 
 #[test]
+fn heading_links_keep_only_their_text() {
+    let parsed = doc(
+        "# See [Guide][g] here\n\n## Also [Inline](x.md \"T\")\n\n## [Both][] and [short] ##\n\nSetext [Link](<a b.md>)\n---\n\n[g]: g.md\n[both]: b.md\n[short]: s.md\n",
+    );
+    let headings: Vec<String> = parsed
+        .headings
+        .iter()
+        .map(|h| format!("{} {}", h.path, h.name))
+        .collect();
+    assert_eq!(
+        headings,
+        [
+            "docs/guide.md#see-guide-here See Guide here",
+            "docs/guide.md#also-inline Also Inline",
+            "docs/guide.md#both-and-short Both and short",
+            "docs/guide.md#setext-link Setext Link",
+        ]
+    );
+}
+
+#[test]
 fn fenced_code_is_ignored_for_mentions() {
     let parsed = doc(
         "Uses `Store`.\n\n```rust\nlet x = `Hidden`;\n```\n\n    `Indented`\n\n# Heading with `Inline`\n",

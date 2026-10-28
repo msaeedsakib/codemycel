@@ -24,3 +24,5 @@
 (let_declaration value: (_) @local.exclude)
 (let_condition value: (_) @local.exclude)
 (for_expression value: (_) @local.exclude)
+(if_expression alternative: (else_clause) @local.exclude)
+(let_declaration alternative: (block) @local.exclude)
