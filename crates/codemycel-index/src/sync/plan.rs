@@ -22,28 +22,33 @@ const VERIFIED: [EdgeKind; 7] = [
 pub struct SyncPlan {
     /// Changed code files that still exist, parsed or not; their code rows are rewritten.
     pub rewrite: BTreeSet<RepoPath>,
-    /// Parsed code files whose verified edges and unresolved rows are rebuilt.
+    /// Parsed code files whose verified edges and unresolved rows are rebuilt; the verify run
+    /// adds every file of a root it has to rebuild whole.
     pub reverify: BTreeSet<RepoPath>,
     /// Files whose traits and interfaces are asked for implementers: `reverify`, plus the
-    /// files of the traits and methods the re-verified files implement or override.
+    /// files of the traits and methods the re-verified files implement or override, as stored
+    /// and as their new parse names them.
     pub implementer_sources: BTreeSet<RepoPath>,
 }
 
 impl SyncPlan {
     /// `symbols` holds every changed code file, parsed before or now. Re-verified, among the
-    /// files `parsed` now: each changed file; every file with a verified edge to or from a
-    /// removed or changed symbol, or to or from the file itself once any of its symbols changed;
-    /// every file with an unresolved candidate named like an added symbol; for a trait impl
-    /// added or removed, every file declaring a type or trait of those names; and every file
-    /// whose SCIP coverage flipped. The index is read before anything is written.
+    /// files `parsed` now: each file in `forced`; each changed file; every file with a verified
+    /// edge to or from a removed or changed symbol, or to or from the file itself once any of
+    /// its symbols changed; every file with an unresolved candidate named like an added or
+    /// changed symbol; and for a trait impl added or removed, every file declaring a type or
+    /// trait of those names. `supertypes` holds, per parsed file, the trait and interface names
+    /// its new parse implements or extends; the files declaring them become implementer
+    /// sources of a re-verified file. The index is read before anything is written.
     pub fn build(
         changes: &ChangeSet,
         symbols: &BTreeMap<RepoPath, ChangedSymbols>,
-        coverage_flips: &BTreeSet<RepoPath>,
+        forced: &BTreeSet<RepoPath>,
         parsed: &BTreeSet<RepoPath>,
+        supertypes: &BTreeMap<RepoPath, BTreeSet<String>>,
         store: &impl StoreRead,
     ) -> Result<Self, IndexError> {
-        let mut reverify: BTreeSet<RepoPath> = coverage_flips.clone();
+        let mut reverify: BTreeSet<RepoPath> = forced.clone();
         for (file, changed) in symbols {
             reverify.insert(file.clone());
             let mut touched: Vec<NodeRef> = changed
@@ -58,8 +63,13 @@ impl SyncPlan {
             for node in &touched {
                 reverify.extend(linked_files(store, node, &VERIFIED)?);
             }
-            for node in &changed.added {
-                reverify.extend(store.files_with_unresolved_text(&node.name)?);
+            let names = changed
+                .added
+                .iter()
+                .map(|node| node.name.as_str())
+                .chain(changed.changed.iter().map(|node| node.path.name()));
+            for name in names {
+                reverify.extend(store.files_with_unresolved_text(name)?);
             }
             for found in changed.impls_added.iter().chain(&changed.impls_removed) {
                 reverify.extend(declaring_files(store, &found.self_type, is_implementer)?);
@@ -73,6 +83,9 @@ impl SyncPlan {
                 let parents =
                     store.edges_from(node.id, &[EdgeKind::Implements, EdgeKind::Overrides])?;
                 implementer_sources.extend(parents.iter().filter_map(|e| file_of(&e.edge.dst)));
+            }
+            for name in supertypes.get(file).into_iter().flatten() {
+                implementer_sources.extend(declaring_files(store, name, is_parent)?);
             }
         }
         let rewrite = symbols

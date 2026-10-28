@@ -102,6 +102,16 @@ fn ignored_paths_and_codemycel_dir_do_not_emit() {
 }
 
 #[test]
+fn git_exclude_edit_emits_a_change_set() {
+    let repo = repo(&[(".git/info/exclude", ""), ("a.rs", "fn a() {}\n")]);
+    let (_watcher, rx) = watch(repo.path(), &[]);
+    write(repo.path(), ".git/HEAD", "ref: refs/heads/main\n");
+    write(repo.path(), ".git/info/exclude", "a.rs\n");
+    let all = collect_until(&rx, |all| !all.is_empty());
+    assert_eq!(all.paths(), vec![path(".git/info/exclude")]);
+}
+
+#[test]
 fn rename_is_delete_plus_create() {
     let repo = repo(&[("old.rs", "fn f() {}\n")]);
     let (_watcher, rx) = watch(repo.path(), &[]);

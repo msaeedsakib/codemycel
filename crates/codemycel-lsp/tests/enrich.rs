@@ -10,12 +10,13 @@ use codemycel_core::{
     Candidate, CandidateRole, DegradeReason, EdgeKind, LanguageAdapter, NodeKind, NodeRef,
     ReadinessStrategy, RepoPath, SemanticPath, UnresolvedReason, VerifiedBy,
 };
-use codemycel_lsp::client::LineIndex;
+use codemycel_lsp::client::{LineIndex, path_to_uri};
+use codemycel_lsp::enrich::{Mapper, Target};
 use codemycel_lsp::{
     EnrichOptions, EnrichReport, Enricher, FileView, IndexView, Readiness, ServerLaunch,
 };
 use codemycel_parse::rust::RustAdapter;
-use lsp_types::Position;
+use lsp_types::{Position, Range};
 use serde_json::{Value, json};
 use support::{FakeAdapter, fake_lsp};
 use tempfile::TempDir;
@@ -477,6 +478,28 @@ async fn whole_file_and_other_declaration_ranges_map_to_their_nodes() {
         ),
         "{:#?}",
         report.edges
+    );
+}
+
+#[test]
+fn module_range_from_first_token_after_comments_maps_to_the_file() {
+    let fixture = Fixture::with(
+        "#!/usr/bin/env run\n// Leading comment.\n/* And a block. */\n\npub fn first() {}\n\npub fn second() {}\n",
+    );
+    let mapper = Mapper::new(&fixture.view, &fixture.language, fixture.root());
+    let uri = path_to_uri(&fixture.root().join(FILE)).unwrap();
+    let lines = u32::try_from(fixture.text.lines().count()).unwrap();
+    let to_end = |line| Range::new(Position::new(line, 0), Position::new(lines, 0));
+
+    assert_eq!(
+        mapper.locate(&uri, to_end(4)),
+        Target::Node(node(FILE, NodeKind::File)),
+        "the range a TypeScript server gives a module specifier"
+    );
+    assert_eq!(
+        mapper.locate(&uri, to_end(6)),
+        Target::Node(node("src/lib.rs::second", NodeKind::Function)),
+        "a declaration through the end of the file is not the module"
     );
 }
 

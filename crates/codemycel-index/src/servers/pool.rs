@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use codemycel_core::config::ServerConfig;
-use codemycel_core::{DegradeReason, Root, ServerAdapter, ServerInfo};
+use codemycel_core::{DegradeReason, RepoPath, Root, ServerAdapter, ServerInfo};
 use codemycel_lsp::enrich::absolute;
 use codemycel_lsp::{EnrichOptions, EnrichReport, Enricher, Provisioner, ServerLaunch, Session};
 use tokio::runtime::Runtime;
@@ -13,9 +13,9 @@ use super::{RootJob, RootOutcome, Servers};
 use crate::Registry;
 
 /// Language servers kept running between a session's syncs, one per root. A root's server
-/// starts on its first job, is told about changed files and reused while warm, and stops once
-/// `reap_idle` finds it unused for the idle timeout. Server adapters come from the registry the
-/// pool borrows, so a server outlives the jobs that use it.
+/// starts on its first job, is told about every sync's changed files and reused while warm, and
+/// stops once `reap_idle` finds it unused for the idle timeout. Server adapters come from the
+/// registry the pool borrows, so a server outlives the jobs that use it.
 pub struct ServerPool<'r> {
     registry: &'r Registry,
     home: PathBuf,
@@ -147,8 +147,8 @@ impl<'r> ServerPool<'r> {
 }
 
 impl Servers for ServerPool<'_> {
-    /// Reuses the root's running server after telling it which files changed, or starts one.
-    /// A server that crashed between syncs, or whose config changed, is replaced. A crash during
+    /// Reuses the root's running server, or starts one. A server that crashed between syncs,
+    /// or whose config changed, is replaced. A crash during
     /// the job restarts it once; when that fails too the root is degraded for this job and the
     /// server dropped, so the next job starts a fresh one.
     fn enrich(&self, job: &RootJob<'_>) -> RootOutcome {
@@ -176,13 +176,7 @@ impl Servers for ServerPool<'_> {
             shut_down(Some(runtime), warm);
         }
         let warm = match state.warm.entry(job.root.clone()) {
-            std::collections::btree_map::Entry::Occupied(entry) => {
-                let warm = entry.into_mut();
-                if let Err(error) = warm.session.files_changed(job.repo_root, job.changed) {
-                    tracing::debug!(root = %job.root.path, "telling the server about changes: {error}");
-                }
-                warm
-            }
+            std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
             std::collections::btree_map::Entry::Vacant(entry) => {
                 match self.launch(runtime, job, server, config, root_dir) {
                     Ok(warm) => entry.insert(warm),
@@ -208,6 +202,15 @@ impl Servers for ServerPool<'_> {
             unresolved: report.unresolved,
             partially_enriched: report.partially_enriched,
             config_diagnostics: report.config_diagnostics,
+        }
+    }
+
+    /// Sends `workspace/didChangeWatchedFiles` to every running server.
+    fn files_changed(&self, repo_root: &Path, changed: &[RepoPath]) {
+        for (root, warm) in &self.lock().warm {
+            if let Err(error) = warm.session.files_changed(repo_root, changed) {
+                tracing::debug!(root = %root.path, "telling the server about changes: {error}");
+            }
         }
     }
 }

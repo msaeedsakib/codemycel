@@ -128,6 +128,59 @@ fn server_starts_on_first_use_and_stops_after_idle() {
 }
 
 #[test]
+fn server_without_a_job_in_a_sync_is_told_its_changes() {
+    let repo = Repo::new(&[
+        (
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\n",
+        ),
+        ("a/src/lib.rs", B),
+        (
+            "b/Cargo.toml",
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\n",
+        ),
+        ("b/src/lib.rs", B),
+    ]);
+    let registry = registry(&repo.scenario(json!([])));
+    let db = tempfile::tempdir().unwrap();
+    let mut store = Store::create(&db.path().join("index.db")).unwrap();
+    let pool = ServerPool::new(
+        &registry,
+        repo.home(),
+        false,
+        EnrichOptions::default(),
+        ServerPool::IDLE_TIMEOUT,
+    );
+    sync(&repo, &mut store, &registry, &pool, SyncMode::Full);
+    assert_eq!(pool.running().len(), 2);
+
+    std::fs::write(
+        repo.path().join("a/src/lib.rs"),
+        "pub fn helper() {}\npub fn more() {}\n",
+    )
+    .unwrap();
+    let report = sync(&repo, &mut store, &registry, &pool, SyncMode::Incremental);
+    let [(root, _)] = report.pipeline.statuses.as_slice() else {
+        panic!("only the edited root runs: {:?}", report.pipeline.statuses);
+    };
+    assert_eq!(root.path.as_str(), "a");
+
+    let edited = repo.uri("a/src/lib.rs");
+    let notified = repo
+        .log()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|m| m["method"] == "workspace/didChangeWatchedFiles")
+        .filter(|m| {
+            m["params"]["changes"]
+                .as_array()
+                .is_some_and(|changes| changes.iter().any(|c| c["uri"] == edited))
+        })
+        .count();
+    assert_eq!(notified, 2, "both running servers hear of the edit once");
+}
+
+#[test]
 fn crashed_server_restarts_once() {
     let repo = rust_repo();
     let scenario = repo.scratch.path().join("crashing.json");

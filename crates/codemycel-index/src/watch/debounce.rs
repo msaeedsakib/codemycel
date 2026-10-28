@@ -16,7 +16,7 @@ pub(super) struct Pending {
 }
 
 impl Pending {
-    /// Keeps the event's paths the rules do not ignore; `true` when it kept anything. Reads and
+    /// Keeps the event's paths the rules watch; `true` when it kept anything. Reads and
     /// metadata-only changes are dropped.
     pub(super) fn record(&mut self, rules: &mut Rules, event: &Event) -> bool {
         if matches!(
@@ -39,7 +39,7 @@ impl Pending {
                 continue;
             };
             rules.forget_if_ignore_file(&relative);
-            if rules.ignored(&relative) {
+            if !rules.watched(&relative) {
                 continue;
             }
             *self.touched.entry(relative).or_default() |= created;

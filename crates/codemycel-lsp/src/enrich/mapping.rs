@@ -72,10 +72,12 @@ impl<'a> Mapper<'a> {
     }
 
     /// In order: the innermost node whose selection holds `range.start`; the file node for a
-    /// range spanning the whole file (a module); the first node whose selection lies inside
-    /// `range` (servers that return a whole declaration); an impl header; the one node of the
-    /// file named by the identifier at `range` (another declaration of it, such as an overload
-    /// signature); the file node for a range at the top of the file.
+    /// range spanning the whole file (a module), from its first byte or its first token; the
+    /// first node whose selection lies inside `range` (servers that return a whole
+    /// declaration); an impl header; the one node of the file named by the identifier at
+    /// `range` (another declaration of it, such as an overload signature); the file node for a
+    /// range at the top of the file. The top of a file is any position with only whitespace,
+    /// comments, and a shebang line before it.
     pub fn locate(&self, uri: &Uri, range: Range) -> Target {
         let file = match self.repo_path(uri) {
             Ok(file) => file,
@@ -93,7 +95,7 @@ impl<'a> Mapper<'a> {
             .offset(range.end)
             .map_or(text.len(), |end| end as usize)
             .max(start as usize);
-        let top = range.start.line == 0 && range.start.character == 0;
+        let top = text.get(..start as usize).is_some_and(only_trivia);
         let holding = view
             .nodes
             .iter()
@@ -136,5 +138,29 @@ impl<'a> Mapper<'a> {
             return Target::Node(view.file_node.clone());
         }
         Target::Unmapped
+    }
+}
+
+/// Whether `prefix`, the start of a file, holds nothing but whitespace, `//` and `/* */`
+/// comments, and a leading `#!` line other than a Rust inner attribute.
+fn only_trivia(prefix: &str) -> bool {
+    let mut rest = match prefix.strip_prefix("#!") {
+        Some(shebang) if !shebang.starts_with('[') => {
+            shebang.split_once('\n').map_or("", |(_, after)| after)
+        }
+        _ => prefix,
+    };
+    loop {
+        rest = rest.trim_start();
+        if let Some(comment) = rest.strip_prefix("//") {
+            rest = comment.split_once('\n').map_or("", |(_, after)| after);
+        } else if let Some(comment) = rest.strip_prefix("/*") {
+            match comment.split_once("*/") {
+                Some((_, after)) => rest = after,
+                None => return false,
+            }
+        } else {
+            return rest.is_empty();
+        }
     }
 }

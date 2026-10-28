@@ -136,7 +136,7 @@ fn init_exit_code_2_when_root_degraded() {
 }
 
 #[test]
-fn sync_after_body_edit_touches_one_file() {
+fn sync_after_body_edit_in_degraded_root_reverifies_the_whole_root() {
     let sandbox = tiny_crate();
     sandbox.hidden(&["init"]).code(2);
 
@@ -149,7 +149,7 @@ fn sync_after_body_edit_touches_one_file() {
         .hidden(&["sync"])
         .code(2)
         .stdout(predicate::str::starts_with(
-            "changed 1 files (0 added, 1 modified, 0 deleted), re-verified 1\n",
+            "changed 1 files (0 added, 1 modified, 0 deleted), re-verified 2\n",
         ));
 }
 

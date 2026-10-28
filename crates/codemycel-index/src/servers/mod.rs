@@ -26,8 +26,6 @@ pub struct RootJob<'a> {
     /// Files this server answers for but does not enrich, whose traits and interfaces are asked
     /// for implementers.
     pub others: &'a [RepoPath],
-    /// Files added, modified, or deleted since the last sync, for a server that stayed running.
-    pub changed: &'a [RepoPath],
 }
 
 /// What enriching a root produced.
@@ -70,6 +68,11 @@ impl RootOutcome {
 /// kept warm between syncs by a session.
 pub trait Servers {
     fn enrich(&self, job: &RootJob<'_>) -> RootOutcome;
+
+    /// Called once per sync, before its first job, with every path the sync found added,
+    /// modified, or deleted, so servers still running from an earlier sync drop what they
+    /// cached about them, whether or not their root has a job in this sync.
+    fn files_changed(&self, _repo_root: &Path, _changed: &[RepoPath]) {}
 }
 
 /// Locates, starts, enriches with, and shuts down a server for every job.

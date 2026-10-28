@@ -12,7 +12,9 @@ use std::time::{Duration, Instant};
 use codemycel_core::config::Config;
 use codemycel_core::config::paths::notes_dir;
 use codemycel_core::store::{Store, StoreRead, Tx, meta};
-use codemycel_core::{Community, FileRecord, Node, RepoPath, Root, RootStatus, SkipReason};
+use codemycel_core::{
+    CandidateRole, Community, FileRecord, Language, Node, RepoPath, Root, RootStatus, SkipReason,
+};
 use codemycel_scip::{ScipError, ScipImporter, ScipIndex};
 
 pub use docs_phase::DocsCounts;
@@ -197,18 +199,24 @@ impl Pipeline {
         let mut staged = Staged::new(repo_root, config, registry, sources.progress)?;
         let changes = ChangeSet::between(&store.files()?, &staged.files);
         let full = mode == SyncMode::Full || needs_full(store, &staged, config, sources)?;
-        let changed = changes.paths();
         let (scope, plan) = if full {
-            (Scope::everything(&staged, changed), None)
+            (Scope::everything(&staged), None)
         } else {
             let plan = plan(store, &staged, &changes, sources)?;
             let scope = Scope {
                 files: plan.reverify.clone(),
                 implementer_sources: plan.implementer_sources.clone(),
-                changed,
+                statuses: store
+                    .roots()?
+                    .into_iter()
+                    .filter_map(|stored| Some((stored.root, stored.status?)))
+                    .collect(),
             };
             (scope, Some(plan))
         };
+        if !changes.is_empty() {
+            sources.servers.files_changed(repo_root, &changes.paths());
+        }
         let verified = verify_phase::run(&staged, repo_root, config, registry, sources, &scope)?;
         for file in &mut staged.files {
             file.scip_covered = verified.scip_covered.contains(&file.path);
@@ -235,7 +243,7 @@ impl Pipeline {
         sources.progress.phase(Phase::Write, started.elapsed());
         Ok(SyncReport {
             full,
-            reverified: scope.files.len(),
+            reverified: verified.files.len(),
             pipeline: staged.report(docs, verified.statuses),
             changes,
         })
@@ -332,7 +340,7 @@ fn plan(
         symbols.insert(path, diff);
     }
     let covered = verify_phase::scip_covered(staged, sources.scip)?;
-    let flips: BTreeSet<RepoPath> = parsed
+    let mut forced: BTreeSet<RepoPath> = parsed
         .keys()
         .filter(|path| {
             stored
@@ -341,8 +349,80 @@ fn plan(
         })
         .map(|path| (*path).clone())
         .collect();
+    forced.extend(reached_by_project_files(staged, changes));
     let parsed_now: BTreeSet<RepoPath> = parsed.keys().map(|path| (*path).clone()).collect();
-    SyncPlan::build(changes, &symbols, &flips, &parsed_now, store)
+    let supertypes: BTreeMap<RepoPath, BTreeSet<String>> = parsed
+        .iter()
+        .map(|(path, code)| {
+            let candidates = code
+                .parsed
+                .candidates
+                .iter()
+                .filter(|c| matches!(c.role, CandidateRole::Implements | CandidateRole::Extends))
+                .map(|c| c.text.clone());
+            let impls = code
+                .parsed
+                .impl_records
+                .iter()
+                .filter_map(|record| record.trait_text.clone());
+            ((*path).clone(), candidates.chain(impls).collect())
+        })
+        .collect();
+    SyncPlan::build(changes, &symbols, &forced, &parsed_now, &supertypes, store)
+}
+
+/// The code files of every root whose resolution a changed manifest or project config can
+/// affect: one its language reads, inside the root's directory or in a directory above it,
+/// where workspace manifests and shared `tsconfig` files live.
+fn reached_by_project_files(staged: &Staged, changes: &ChangeSet) -> BTreeSet<RepoPath> {
+    let changed = changes
+        .added
+        .iter()
+        .chain(&changes.modified)
+        .chain(&changes.deleted);
+    let mut roots: BTreeSet<&Root> = BTreeSet::new();
+    for path in changed {
+        let (dir, name) = path
+            .as_str()
+            .rsplit_once('/')
+            .unwrap_or(("", path.as_str()));
+        let languages = project_file_languages(name);
+        roots.extend(staged.roots.roots().iter().filter(|root| {
+            let root_dir = root.path.as_str();
+            languages.contains(&root.language)
+                && (within(path.as_str(), root_dir) || within(root_dir, dir))
+        }));
+    }
+    staged
+        .parsed
+        .iter()
+        .filter(|code| {
+            staged.assignment[code.file]
+                .as_ref()
+                .is_some_and(|root| roots.contains(root))
+        })
+        .map(|code| staged.files[code.file].path.clone())
+        .collect()
+}
+
+/// The languages whose roots read a file named `name` to resolve their code.
+fn project_file_languages(name: &str) -> &'static [Language] {
+    const SCRIPT: &[Language] = &[Language::TypeScript, Language::JavaScript];
+    let tsconfig = name.starts_with("tsconfig") && name.ends_with(".json");
+    match name {
+        "Cargo.toml" => &[Language::Rust],
+        "package.json" | "jsconfig.json" => SCRIPT,
+        _ if tsconfig => SCRIPT,
+        _ => &[],
+    }
+}
+
+/// Whether `path` is `dir` or lies below it; every path lies below the repository root, `""`.
+fn within(path: &str, dir: &str) -> bool {
+    dir.is_empty()
+        || path
+            .strip_prefix(dir)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 /// The stages every sync ends with, after the code layer is written: name counts, the whole
