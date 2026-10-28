@@ -18,3 +18,8 @@
 (_pattern/identifier) @local.definition
 (field_pattern name: (shorthand_field_identifier) @local.definition)
 (type_parameter name: (type_identifier) @local.definition)
+(const_parameter name: (identifier) @local.definition)
+
+(let_declaration value: (_) @local.exclude)
+(let_condition value: (_) @local.exclude)
+(for_expression value: (_) @local.exclude)

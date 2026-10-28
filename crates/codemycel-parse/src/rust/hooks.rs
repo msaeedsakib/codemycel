@@ -83,10 +83,18 @@ fn refine(candidate: &mut Candidate, node: Node<'_>) -> bool {
 }
 
 /// An identifier inside a macro's token tree is a call when a `(…)` group follows it and a value
-/// otherwise. Path prefixes (`a` in `a::b`), macro names (`m!`), field names (`x:`), field
-/// accesses (`.x`), and lifetimes (`'a`) are not candidates.
+/// otherwise; a turbofish (`parse::<T>`) is skipped before looking at what follows. Path prefixes
+/// (`a` in `a::b`), macro names (`m!`), field names (`x:`), field accesses (`.x`), and lifetimes
+/// (`'a`) are not candidates.
 fn token_role(node: Node<'_>) -> Option<CandidateRole> {
-    let next = node.next_sibling();
+    let mut next = node.next_sibling();
+    if let Some(open) = next
+        .filter(|n| n.kind() == "::")
+        .and_then(|n| n.next_sibling())
+        .filter(|n| n.kind() == "<")
+    {
+        next = after_generics(open);
+    }
     let prev = node.prev_sibling().map(|prev| prev.kind());
     match next.map(|next| next.kind()) {
         Some("::" | "!" | ":") => None,
@@ -101,6 +109,25 @@ fn token_role(node: Node<'_>) -> Option<CandidateRole> {
         _ if prev == Some(".") => None,
         _ => Some(CandidateRole::Value),
     }
+}
+
+/// The token after the generic group opened by `open`, counting `>>` as two closers.
+fn after_generics(open: Node<'_>) -> Option<Node<'_>> {
+    let mut depth = 0;
+    let mut current = Some(open);
+    while let Some(token) = current {
+        depth += match token.kind() {
+            "<" => 1,
+            ">" => -1,
+            ">>" => -2,
+            _ => 0,
+        };
+        current = token.next_sibling();
+        if depth <= 0 {
+            return current;
+        }
+    }
+    None
 }
 
 fn has_child(node: Node<'_>, kind: &str) -> bool {

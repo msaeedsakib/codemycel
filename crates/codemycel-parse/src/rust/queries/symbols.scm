@@ -8,6 +8,11 @@
   name: (type_identifier) @def.name
   body: (_)? @def.body) @def.struct
 
+(union_item
+  (visibility_modifier)? @def.visibility
+  name: (type_identifier) @def.name
+  body: (field_declaration_list) @def.body) @def.struct
+
 (enum_item
   (visibility_modifier)? @def.visibility
   name: (type_identifier) @def.name

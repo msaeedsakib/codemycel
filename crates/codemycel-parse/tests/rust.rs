@@ -104,6 +104,80 @@ fn use_paths_yield_import_candidates_per_leaf() {
 }
 
 #[test]
+fn self_super_and_crate_use_leaves_yield_imports() {
+    let parsed = parse(
+        "use std::io::{self, Read};\nuse super::*;\nuse crate::store::{self as st, Store};\npub use self::a::*;\nuse super::super::*;\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "1:9 import io",
+            "1:20 import Read",
+            "2:4 import super",
+            "3:11 import store",
+            "3:31 import Store",
+            "4:14 export a",
+            "5:11 import super",
+        ]
+    );
+}
+
+#[test]
+fn bindings_do_not_hide_their_own_initialisers() {
+    let parsed = parse(
+        "use std::env::args;\nfn main() {\n    let args = args();\n    for item in item() {}\n    if let Some(v) = v() { v; }\n    while let Some(w) = w() {}\n    args;\n}\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "1:14 import args",
+            "3:15 call args",
+            "4:16 call item",
+            "5:11 value Some",
+            "5:21 call v",
+            "6:14 value Some",
+            "6:24 call w",
+        ]
+    );
+}
+
+#[test]
+fn generic_parameters_are_locals() {
+    let parsed = parse("fn g<T: Bound, const N: usize>(t: T) -> [u8; N] {\n    [0; N]\n}\n");
+    assert_eq!(candidates(&parsed), ["1:8 type Bound"]);
+}
+
+#[test]
+fn union_is_a_struct_with_fields() {
+    let parsed = parse("union U {\n    a: u32,\n    pub b: f32,\n}\n");
+    assert_eq!(
+        paths(&parsed),
+        [
+            "src/lib.rs::U (struct)",
+            "src/lib.rs::U::a (field)",
+            "src/lib.rs::U::b (field)",
+        ]
+    );
+}
+
+#[test]
+fn macro_turbofish_is_classified_by_what_follows() {
+    let parsed = parse(
+        "fn f(s: &str) {\n    assert_eq!(s.parse::<u32>(), Vec::<u8>::new(), make::<u8>, wrap::<Option<u8>>(1));\n}\n",
+    );
+    assert_eq!(
+        candidates(&parsed),
+        [
+            "2:17 call parse",
+            "2:44 call new",
+            "2:51 value make",
+            "2:63 call wrap",
+            "2:70 value Option",
+        ]
+    );
+}
+
+#[test]
 fn macro_token_trees_yield_calls_and_values() {
     let parsed = parse(
         "#[derive(Debug, Clone)]\nstruct S;\nfn f(x: u32) {\n    println!(\"{} {}\", total(x), a::b::LIMIT, x.len(), x.field, inner!(y), Shape::Empty);\n}\n",

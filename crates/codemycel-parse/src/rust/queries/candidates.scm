@@ -68,5 +68,15 @@
          (scoped_identifier name: (identifier) @cand.import)])
 (use_wildcard
   [(identifier) @cand.import
-   (scoped_identifier name: (identifier) @cand.import)])
+   (super) @cand.import
+   (crate) @cand.import
+   (self) @cand.import
+   (scoped_identifier name: [(identifier) (super)] @cand.import)])
+(scoped_use_list
+  path: [(identifier) @cand.import
+         (super) @cand.import
+         (crate) @cand.import
+         (self) @cand.import
+         (scoped_identifier name: [(identifier) (super)] @cand.import)]
+  list: (use_list [(self) (use_as_clause path: (self))]))
 (extern_crate_declaration name: (identifier) @cand.import)
