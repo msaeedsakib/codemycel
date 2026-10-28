@@ -130,9 +130,15 @@ fn server_starts_on_first_use_and_stops_after_idle() {
 #[test]
 fn server_without_a_job_in_a_sync_is_told_its_changes() {
     let repo = Repo::new(&[
-        ("a/Cargo.toml", "[package]\nname = \"a\"\nversion = \"0.1.0\"\n"),
+        (
+            "a/Cargo.toml",
+            "[package]\nname = \"a\"\nversion = \"0.1.0\"\n",
+        ),
         ("a/src/lib.rs", B),
-        ("b/Cargo.toml", "[package]\nname = \"b\"\nversion = \"0.1.0\"\n"),
+        (
+            "b/Cargo.toml",
+            "[package]\nname = \"b\"\nversion = \"0.1.0\"\n",
+        ),
         ("b/src/lib.rs", B),
     ]);
     let registry = registry(&repo.scenario(json!([])));

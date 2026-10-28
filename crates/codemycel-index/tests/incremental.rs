@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use codemycel_core::config::Config;
 use codemycel_core::store::{Store, StoreRead};
-use codemycel_core::{Language, RepoPath};
+use codemycel_core::{DegradeReason, Language, RepoPath};
 use codemycel_index::{Registry, SyncMode, SyncReport};
 use codemycel_lsp::Provisioner;
 use codemycel_parse::rust::RustAdapter;
@@ -50,6 +50,23 @@ impl Session {
         )
     }
 
+    /// A sync with `registry` in place of the session's own.
+    fn sync_with(
+        &mut self,
+        registry: &Registry,
+        provisioner: &Provisioner,
+        mode: SyncMode,
+    ) -> SyncReport {
+        sync(
+            &self.dir,
+            &self.config,
+            &mut self.store,
+            registry,
+            provisioner,
+            mode,
+        )
+    }
+
     fn edit(&self, file: &str, from: &str, to: &str) {
         let path = self.dir.join(file);
         let text = std::fs::read_to_string(&path).unwrap();
@@ -67,16 +84,19 @@ impl Session {
         std::fs::remove_file(self.dir.join(file)).unwrap();
     }
 
-    /// Every dump equals a fresh full index of the tree as it is now. Communities are compared
-    /// by membership, since a sync inherits ids a fresh index mints anew.
+    /// Every dump, root status, and file flag equals a fresh full index of the tree as it is
+    /// now. Communities are compared by membership, since a sync inherits ids a fresh index
+    /// mints anew.
     fn assert_matches_fresh(&self, provisioner: &Provisioner, registry: Registry) {
         let fresh = index_fixture_full(&self.dir, registry, provisioner);
         let mut failures = String::new();
-        let dumps: [(&str, DumpFn); 4] = [
+        let dumps: [(&str, DumpFn); 6] = [
             ("nodes", |s| s.dump_nodes().unwrap()),
             ("edges", |s| s.dump_edges().unwrap()),
             ("unresolved", |s| s.dump_unresolved().unwrap()),
             ("impl_records", |s| s.dump_impl_records().unwrap()),
+            ("roots", roots),
+            ("files", files),
         ];
         for (name, dump) in dumps {
             let (expected, actual) = (dump(&fresh.store), dump(&self.store));
@@ -94,6 +114,60 @@ impl Session {
         );
         assert_eq!(partition(&self.store), partition(&fresh.store));
     }
+}
+
+/// Each root's path, language, coverage, and degradation; server versions are left out.
+fn roots(store: &Store) -> String {
+    store
+        .roots()
+        .unwrap()
+        .into_iter()
+        .map(|stored| {
+            let status = stored.status.as_ref();
+            format!(
+                "{}\t{:?}\t{:?}\t{:?}\n",
+                stored.root.path,
+                stored.root.language,
+                status.map(|s| s.coverage),
+                status.map(|s| s.degraded),
+            )
+        })
+        .collect()
+}
+
+/// Each file's path, whether it is parsed, covered by SCIP, or partially enriched, and why it
+/// is skipped.
+fn files(store: &Store) -> String {
+    let partial: BTreeSet<RepoPath> = store
+        .partially_enriched_files()
+        .unwrap()
+        .into_iter()
+        .collect();
+    store
+        .files()
+        .unwrap()
+        .into_iter()
+        .map(|file| {
+            let file = file.record;
+            format!(
+                "{}\t{}\t{}\t{}\t{:?}\n",
+                file.path,
+                file.parsed,
+                file.scip_covered,
+                partial.contains(&file.path),
+                file.skip_reason,
+            )
+        })
+        .collect()
+}
+
+fn degraded(report: &SyncReport) -> Vec<Option<DegradeReason>> {
+    report
+        .pipeline
+        .statuses
+        .iter()
+        .map(|(_, status)| status.degraded)
+        .collect()
 }
 
 fn partition(store: &Store) -> BTreeSet<Vec<String>> {
@@ -218,6 +292,150 @@ fn incremental_typescript_sync_equals_fresh_init() {
     );
     session.sync(&provisioner, SyncMode::Incremental);
 
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn root_that_loses_its_server_degrades_whole_and_recovers_whole() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let no_servers = || Registry::default().with_servers(Vec::new());
+    let (_temp, dir) = fixture_copy(&fixture("rust/workspace-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.sync(&provisioner, SyncMode::Full);
+
+    session.edit("crates/cli/src/main.rs", "MAX_SHAPES / 2", "MAX_SHAPES / 4");
+    let lost = session.sync_with(&no_servers(), &provisioner, SyncMode::Incremental);
+    assert!(!lost.full);
+    assert_eq!(degraded(&lost), [Some(DegradeReason::NoServer)]);
+    session.assert_matches_fresh(&provisioner, no_servers());
+
+    let back = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(back.changes.is_empty());
+    assert_eq!(degraded(&back), [None]);
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn manifest_edit_reverifies_its_root() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("rust/workspace-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "crates/extra/Cargo.toml",
+        "[package]\nname = \"fixture-extra\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+    );
+    session.write(
+        "crates/extra/src/lib.rs",
+        "pub fn extra() -> usize {\n    1\n}\n",
+    );
+    session.edit(
+        "crates/cli/src/main.rs",
+        "MAX_SHAPES / 2",
+        "MAX_SHAPES / 2 + fixture_extra::extra()",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+    let call = "crates/cli/src/main.rs::config (function)\tcalls\tcrates/extra/src/lib.rs::extra (function)";
+    assert!(!session.store.dump_edges().unwrap().contains(call));
+
+    session.edit(
+        "crates/cli/Cargo.toml",
+        "fixture-core = { path = \"../core\" }",
+        "fixture-core = { path = \"../core\" }\nfixture-extra = { path = \"../extra\" }",
+    );
+    let report = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!report.full);
+    assert!(
+        session.store.dump_edges().unwrap().contains(call),
+        "{}",
+        session.store.dump_edges().unwrap()
+    );
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn tsconfig_edit_reverifies_its_root() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "packages/app/src/extra.ts",
+        "import { sum } from \"@lib/math\";\n\nexport const total = sum([1, 2]);\n",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+    let import = "packages/app/src/extra.ts (file)\timports\tpackages/core/src/math.ts (file)";
+    assert!(!session.store.dump_edges().unwrap().contains(import));
+
+    session.edit(
+        "packages/app/tsconfig.json",
+        "\"jsx\": \"react-jsx\"",
+        "\"jsx\": \"react-jsx\",\n    \"paths\": { \"@lib/*\": [\"../core/src/*\"] }",
+    );
+    let report = session.sync(&provisioner, SyncMode::Incremental);
+    assert!(!report.full);
+    let edges = session.store.dump_edges().unwrap();
+    assert!(edges.contains(import), "{edges}");
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn new_file_implementing_an_interface_gets_its_overrides() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.sync(&provisioner, SyncMode::Full);
+
+    session.write(
+        "packages/core/src/triangle.ts",
+        "import type { Shape } from \"./shapes\";\n\nexport class Triangle implements Shape {\n  readonly name = \"triangle\";\n\n  area(): number {\n    return 1;\n  }\n}\n",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+
+    let overrides = "packages/core/src/triangle.ts::Triangle::area (method)\toverrides\tpackages/core/src/shapes.ts::Shape::area (method)";
+    let edges = session.store.dump_edges().unwrap();
+    assert!(edges.contains(overrides), "{edges}");
+    session.assert_matches_fresh(&provisioner, Registry::default());
+}
+
+#[test]
+fn method_added_to_a_trait_reaches_its_implementers() {
+    let Some(provisioner) = provisioner_for(Language::Rust) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("rust/workspace-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "crates/core/src/paint.rs",
+        "pub trait Paint {\n    fn paint(&self) -> u8;\n}\n",
+    );
+    session.write(
+        "crates/core/src/ring.rs",
+        "pub struct Ring;\n\nimpl crate::paint::Paint for Ring {\n    fn paint(&self) -> u8 {\n        1\n    }\n\n    fn gloss(&self) -> u8 {\n        2\n    }\n}\n",
+    );
+    session.edit(
+        "crates/core/src/lib.rs",
+        "pub mod store;",
+        "pub mod store;\npub mod paint;\npub mod ring;",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+
+    session.edit(
+        "crates/core/src/paint.rs",
+        "    fn paint(&self) -> u8;\n",
+        "    fn paint(&self) -> u8;\n    fn gloss(&self) -> u8;\n",
+    );
+    session.sync(&provisioner, SyncMode::Incremental);
+
+    let overrides = "overrides\tcrates/core/src/paint.rs::Paint::gloss (method)";
+    let edges = session.store.dump_edges().unwrap();
+    assert!(edges.contains(overrides), "{edges}");
     session.assert_matches_fresh(&provisioner, Registry::default());
 }
 
