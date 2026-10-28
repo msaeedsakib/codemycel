@@ -8,6 +8,8 @@ mod write;
 
 use rusqlite::Connection;
 
+use crate::NodeRef;
+
 pub use error::StoreError;
 
 /// Keys of the `meta` table.
@@ -36,6 +38,15 @@ pub use schema::SCHEMA_VERSION;
 pub struct Store {
     conn: Connection,
     commits: u64,
+}
+
+/// What a note is attached to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteTarget<'a> {
+    Node(&'a NodeRef),
+    /// The repository as a whole, which is no node.
+    Repository,
+    Orphaned,
 }
 
 /// A write transaction. Also implements `StoreRead`, so a phase can read its own writes.

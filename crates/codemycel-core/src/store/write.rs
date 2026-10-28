@@ -4,7 +4,7 @@ use rusqlite::{OptionalExtension, params};
 
 use super::error::Result;
 use super::read::{file_key, node_key};
-use super::{StoreError, Tx};
+use super::{NoteTarget, StoreError, Tx};
 use crate::text::name_split;
 use crate::{
     Community, Edge, EdgeKind, FileId, FileRecord, ImplRecord, Node, NodeId, NodeKind, NodeRef,
@@ -575,8 +575,9 @@ impl Tx<'_> {
         Ok(())
     }
 
-    /// Points the note at `target` with an `annotates` edge, or marks it orphaned with `None`.
-    pub fn set_note_target(&mut self, uuid: &NoteId, target: Option<&NodeRef>) -> Result<()> {
+    /// Points the note at its target: a node through an `annotates` edge, the repository with no
+    /// edge, or nothing, which marks it orphaned.
+    pub fn set_note_target(&mut self, uuid: &NoteId, target: NoteTarget<'_>) -> Result<()> {
         let note = self
             .tx
             .query_row(
@@ -586,10 +587,17 @@ impl Tx<'_> {
             )
             .optional()?
             .ok_or_else(|| StoreError::UnknownNote(uuid.clone()))?;
-        let target_id = target.map(|t| node_key(&self.tx, t)).transpose()?;
+        let target_id = match target {
+            NoteTarget::Node(node) => Some(node_key(&self.tx, node)?),
+            NoteTarget::Repository | NoteTarget::Orphaned => None,
+        };
         self.tx.execute(
             "UPDATE notes SET target_node_id = ?2, orphaned = ?3 WHERE node_id = ?1",
-            params![note, target_id.map(|t| t.0), target_id.is_none()],
+            params![
+                note,
+                target_id.map(|t| t.0),
+                matches!(target, NoteTarget::Orphaned)
+            ],
         )?;
         self.tx.execute(
             "DELETE FROM edges WHERE src = ?1 AND kind = 'annotates'",

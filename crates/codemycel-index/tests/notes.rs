@@ -229,7 +229,6 @@ fn write_rejects_an_id_that_is_not_a_uuid() {
 }
 
 #[test]
-#[ignore = "needs a store write that attaches a note to the repository without an edge"]
 fn repository_note_is_attached_without_an_edge() {
     let dir = tempfile::tempdir().unwrap();
     let mut store = store_with(dir.path(), &[]);

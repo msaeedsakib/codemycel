@@ -70,7 +70,6 @@ fn dumps_identical_across_two_runs() {
 }
 
 #[test]
-#[ignore = "communities are computed once the detector lands"]
 fn communities_identical_across_runs_and_paths() {
     let registry = || Registry::default();
     let Some(provisioner) = local_provisioner(registry().server_for(Language::Rust).unwrap())

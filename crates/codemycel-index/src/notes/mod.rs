@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use codemycel_core::store::{Store, StoreRead, StoredNote, Tx};
+use codemycel_core::store::{NoteTarget, Store, StoreRead, StoredNote, Tx};
 use codemycel_core::{NodeKind, NodeRef, Note, NoteId, SemanticPath};
 
 use crate::IndexError;
@@ -183,12 +183,17 @@ fn attach_one(tx: &mut Tx<'_>, stored: &StoredNote) -> Result<(), IndexError> {
     match resolve(tx, &stored.note.target_semantic_path)? {
         Target::Node(node) => {
             if stored.orphaned || stored.target.as_ref() != Some(&node) {
-                tx.set_note_target(uuid, Some(&node))?;
+                tx.set_note_target(uuid, NoteTarget::Node(&node))?;
             }
         }
-        Target::Repository | Target::Missing => {
+        Target::Repository => {
+            if stored.orphaned || stored.target.is_some() {
+                tx.set_note_target(uuid, NoteTarget::Repository)?;
+            }
+        }
+        Target::Missing => {
             if !stored.orphaned || stored.target.is_some() {
-                tx.set_note_target(uuid, None)?;
+                tx.set_note_target(uuid, NoteTarget::Orphaned)?;
             }
         }
     }
