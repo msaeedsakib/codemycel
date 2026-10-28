@@ -69,7 +69,8 @@ impl SyncPlan {
     /// including every symbol of the modules its statements name. The same holds for a module
     /// added, removed, or changed. An added or deleted file re-verifies the files whose
     /// unresolved import and export candidates could name it, and those linked to a file it
-    /// shadows or unshadows. The index is read before anything is written.
+    /// shadows or unshadows or to a module declaration of its name, which stands in for a
+    /// module without a file. The index is read before anything is written.
     pub fn build(
         changes: &ChangeSet,
         symbols: &BTreeMap<RepoPath, ChangedSymbols>,
@@ -163,6 +164,12 @@ impl SyncPlan {
                 for other in &stored_code {
                     if other != file && module_key(other) == module_key(file) {
                         reach.nodes.insert(file_node(other)?);
+                    }
+                }
+                let (_, module) = module_key(file);
+                for declared in store.nodes_named(&module)? {
+                    if declared.node.kind == NodeKind::Module {
+                        reach.nodes.insert(declared.node.node_ref());
                     }
                 }
             }
