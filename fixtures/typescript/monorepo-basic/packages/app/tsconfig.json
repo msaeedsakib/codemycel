@@ -1,0 +1,8 @@
+{
+  /* Core is reached through node_modules, not a project reference. */
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}
