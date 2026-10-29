@@ -11,6 +11,12 @@ expected = """Starts at the axum routes in crates/http/src/dav_mount.rs (`/dav`,
 `dav_entry`), crosses into the irixmail_dav crate through `handler::handle` in \
 crates/dav/src/handler/mod.rs, and ends in crates/dav/src/handler/report.rs. Names files and \
 functions, not only crates."""
+items = [
+    "the axum routes `/dav` and `/dav/{*rest}` in crates/http/src/dav_mount.rs",
+    "`dav_entry` in crates/http/src/dav_mount.rs",
+    "`handler::handle` in crates/dav/src/handler/mod.rs",
+    "crates/dav/src/handler/report.rs as where the REPORT is answered",
+]
 
 [[task]]
 id = "batch-conditional-impact"
@@ -23,6 +29,12 @@ expected = """Lists the non-test call sites by file and function, notes that cal
 `Arc<dyn Store>`/`&dyn Store` so every implementation must change with the trait, and names \
 `RocksdbStore::batch_conditional` in crates/store/src/rocksdb_write.rs as the production override \
 beside the trait's default body. Test stores that override it may be mentioned as also breaking."""
+items = [
+    "`update_messages` in crates/mail/src/read.rs as the non-test call site",
+    "callers hold `dyn Store`, so every implementation must change with the trait",
+    "`RocksdbStore::batch_conditional` in crates/store/src/rocksdb_write.rs as the production override",
+    "the trait's default body in crates/store/src/traits_store.rs",
+]
 
 [[task]]
 id = "smtp-to-store-trace"
@@ -36,6 +48,13 @@ delivery or queueing (crates/mail/src/deliver.rs or crates/smtp/src/queue_enqueu
 `Store` trait method (`batch`, `put`, or `batch_conditional`) called on a trait object, which \
 dispatches to the matching method of `RocksdbStore` in crates/store/src/rocksdb_write.rs. The \
 dispatch step is named explicitly."""
+items = [
+    "the session's DATA handling in crates/smtp/src/session.rs",
+    "delivery or queueing in crates/mail/src/deliver.rs or crates/smtp/src/queue_enqueue.rs",
+    "a `Store` trait method (`batch`, `put` or `batch_conditional`) called on a trait object",
+    "the matching `RocksdbStore` method in crates/store/src/rocksdb_write.rs",
+    "the dynamic dispatch step named explicitly",
+]
 
 [[task]]
 id = "enqueue-impact"
@@ -47,6 +66,13 @@ expected = """Production callers include `crates/smtp/src/sub_enqueue.rs` and th
 crates/smtp/src/queue_deliver.rs, and anything above them that is reached transitively; the \
 tests in queue_deliver.rs and queue_enqueue.rs are listed separately. Each named call site \
 would fail to compile."""
+items = [
+    "crates/smtp/src/sub_enqueue.rs as a production caller",
+    "the bounce or DSN path in crates/smtp/src/queue_deliver.rs as a production caller",
+    "callers reached transitively above them",
+    "the tests in queue_deliver.rs and queue_enqueue.rs listed separately",
+    "each named call site would fail to compile",
+]
 
 [[task]]
 id = "dkim-orientation"
@@ -58,3 +84,9 @@ expected = """Names the signer in crates/smtp/src/dkim_sign.rs (built with `from
 source in the directory crate's DKIM registry (crates/directory/src/dkim_registry.rs), and the \
 submission or outbound path that signs before enqueueing (for example \
 crates/smtp/src/sub_enqueue.rs)."""
+items = [
+    "the signer in crates/smtp/src/dkim_sign.rs",
+    "`from_key` building the signer",
+    "the DKIM registry in crates/directory/src/dkim_registry.rs as the key source",
+    "the submission or outbound path that signs before enqueueing, such as crates/smtp/src/sub_enqueue.rs",
+]

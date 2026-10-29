@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use codemycel_eval::{Run, table};
+use codemycel_eval::{Grade, Run, Task, grading, table};
 
 fn log(tool_calls: usize, models: &[(u64, u64, u64, u64)]) -> String {
     let mut lines = Vec::new();
@@ -64,52 +64,153 @@ fn run_counts_tool_uses_and_sums_tokens_over_models() {
     );
 }
 
+fn task() -> Task {
+    Task {
+        id: "router".to_owned(),
+        kind: "impact".to_owned(),
+        prompt: "Who calls match?".to_owned(),
+        expected: "dispatch calls it.".to_owned(),
+        items: vec!["dispatch".to_owned(), "SmartRouter".to_owned()],
+    }
+}
+
+fn answered(text: &str, tokens: u64) -> String {
+    format!(
+        r#"{{"type":"result","is_error":false,"result":"{text}","modelUsage":{{"m":{{"inputTokens":{tokens}}}}}}}"#
+    )
+}
+
+fn grader_log(verdicts: &str) -> String {
+    format!(
+        r#"{{"type":"result","is_error":false,"structured_output":{{"answers":{verdicts}}},"modelUsage":{{}}}}"#
+    )
+}
+
 #[test]
-fn eval_table_is_generated_from_logs() {
+fn grading_is_blind_and_stores_a_grade_per_run() {
+    let logs = tempfile::tempdir().unwrap();
+    let task_logs = logs.path().join("hono").join("router");
+    write(
+        logs.path(),
+        "hono",
+        "router",
+        "codemycel",
+        1,
+        &answered("ours", 10),
+    );
+    write(
+        logs.path(),
+        "hono",
+        "router",
+        "gitnexus",
+        1,
+        &answered("theirs", 30),
+    );
+    write(
+        logs.path(),
+        "hono",
+        "router",
+        "serena",
+        1,
+        r#"{"type":"result","is_error":true}"#,
+    );
+
+    let prompt = grading::prompt(&task_logs, &task()).unwrap().unwrap();
+    for hidden in ["codemycel", "gitnexus", "serena"] {
+        assert!(!prompt.contains(hidden), "{hidden} leaks into the prompt");
+    }
+    assert!(prompt.contains("1. dispatch\n2. SmartRouter\n"));
+    let first_is_ours = prompt.find("ours").unwrap() < prompt.find("theirs").unwrap();
+    let (ours, theirs) = if first_is_ours { (1, 2) } else { (2, 1) };
+
+    let verdicts = format!(
+        r#"[{{"answer":{ours},"correctness":100,"wrong_claims":[],"items_named":[1,2]}},{{"answer":{theirs},"correctness":60,"wrong_claims":["x"],"items_named":[2,7]}}]"#
+    );
+    assert_eq!(
+        grading::store(&task_logs, &task(), &grader_log(&verdicts)).unwrap(),
+        2
+    );
+    let theirs = grading::load_grade(&task_logs.join("gitnexus").join("1.jsonl"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        theirs,
+        Grade {
+            correctness: 60,
+            wrong_claims: vec!["x".to_owned()],
+            completeness: 0.5,
+            missing: vec!["dispatch".to_owned()],
+        }
+    );
+    assert_eq!(grading::prompt(&task_logs, &task()).unwrap(), None);
+}
+
+#[test]
+fn report_shows_scores_per_mode_and_the_two_times_verdict() {
     let logs = tempfile::tempdir().unwrap();
     let root = logs.path();
-    for (run, (tokens, calls)) in [(1000, 9), (3000, 12), (2000, 10)].into_iter().enumerate() {
-        write(
-            root,
-            "hono",
-            "router",
-            "without",
-            run as u32,
-            &log(calls, &[(tokens, 0, 0, 0)]),
-        );
-    }
+    let grade = |mode: &str, run: u32, correctness: u32, completeness: f64| {
+        let path = root
+            .join("hono")
+            .join("router")
+            .join(mode)
+            .join(format!("{run}.grade.json"));
+        let grade = Grade {
+            correctness,
+            wrong_claims: Vec::new(),
+            completeness,
+            missing: Vec::new(),
+        };
+        std::fs::write(path, serde_json::to_string(&grade).unwrap()).unwrap();
+    };
     for (run, (tokens, calls)) in [(500, 2), (700, 4), (600, 3)].into_iter().enumerate() {
         write(
             root,
             "hono",
             "router",
-            "with",
+            "codemycel",
             run as u32,
             &log(calls, &[(tokens, 0, 0, 0)]),
         );
+        grade("codemycel", run as u32, 100, 1.0);
+    }
+    for (run, (tokens, calls)) in [(1000, 9), (3000, 12), (2000, 10)].into_iter().enumerate() {
+        write(
+            root,
+            "hono",
+            "router",
+            "gitnexus",
+            run as u32,
+            &log(calls, &[(tokens, 0, 0, 0)]),
+        );
+        grade("gitnexus", run as u32, 90, 0.5);
     }
     write(
         root,
-        "irixmail",
-        "dkim",
-        "without",
+        "hono",
+        "router",
+        "serena",
         0,
         &log(1, &[(100, 0, 0, 0)]),
-    );
-    write(
-        root,
-        "irixmail",
-        "dkim",
-        "with",
-        0,
-        r#"{"type":"result","is_error":true}"#,
     );
 
     assert_eq!(
         table(root).unwrap(),
-        "| Repository | Task | Tokens without | Tokens with | Change | Tool calls without | Tool calls with | Runs |\n\
-         |---|---|---:|---:|---:|---:|---:|---:|\n\
-         | hono | router | 2000 | 600 | -70% | 10 | 3 | 3+3 |\n\
-         | irixmail | dkim | 100 | n/a | n/a | 1 | n/a | 1+0 |\n"
+        "| Repository | Task | Mode | Tokens | Correctness | Completeness | Tool calls | Runs (graded) |\n\
+         |---|---|---|---:|---:|---:|---:|---:|\n\
+         | hono | router | codemycel | 600 | 100 | 100 | 3 | 3 (3) |\n\
+         | hono | router | gitnexus | 2000 | 90 | 50 | 10 | 3 (3) |\n\
+         | hono | router | serena | 100 | n/a | n/a | 1 | 1 (0) |\n\
+         \n\
+         | Mode | Tasks | Total median tokens | Mean correctness | Mean completeness |\n\
+         |---|---:|---:|---:|---:|\n\
+         | codemycel | 1 | 600 | 100 | 100 |\n\
+         | gitnexus | 1 | 2000 | 90 | 50 |\n\
+         | serena | 1 | 100 | n/a | n/a |\n\
+         \n\
+         | codemycel against | Tasks won 2× (correctness ≥, completeness ≥, tokens ≤ ½) |\n\
+         |---|---:|\n\
+         | gitnexus | 1 of 1 |\n\
+         | serena | 0 of 1 |\n"
     );
 }

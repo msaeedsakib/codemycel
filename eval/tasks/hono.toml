@@ -12,6 +12,17 @@ expected = """`fetch` in src/hono-base.ts calls the private `#dispatch`, which c
 is `SmartRouter` (src/router/smart-router/router.ts) over `RegExpRouter` and `TrieRouter`, \
 chosen in src/hono.ts. The matched handlers run through `compose` (src/compose.ts), or directly \
 when there is a single handler."""
+items = [
+    "`fetch` in src/hono-base.ts",
+    "the private `#dispatch` in src/hono-base.ts, called by `fetch`",
+    "`this.router.match(method, path)` called in `#dispatch`",
+    "the `Router` interface in src/router.ts",
+    "`SmartRouter` (src/router/smart-router/router.ts) as the default router",
+    "`RegExpRouter` and `TrieRouter` as SmartRouter's candidate routers",
+    "src/hono.ts as where the default router is chosen",
+    "`compose` (src/compose.ts) running the matched handlers",
+    "the single-handler path that skips `compose`",
+]
 
 [[task]]
 id = "router-match-impact"
@@ -23,6 +34,17 @@ expected = """Implementations: RegExpRouter, PreparedRegExpRouter, TrieRouter, L
 PatternRouter, SmartRouter (which delegates to its candidate routers). Callers: \
 `HonoBase#dispatch` in src/hono-base.ts, plus SmartRouter's own delegation. Every implementation \
 and every caller would need to change; tests that call `match` directly are secondary."""
+items = [
+    "`RegExpRouter` implements `match`",
+    "`PreparedRegExpRouter` implements `match`",
+    "`TrieRouter` implements `match`",
+    "`LinearRouter` implements `match`",
+    "`PatternRouter` implements `match`",
+    "`SmartRouter` implements `match`",
+    "`HonoBase#dispatch` in src/hono-base.ts calls `match`",
+    "SmartRouter's own delegation to its candidate routers calls `match`",
+    "every implementation and every caller would need to change",
+]
 
 [[task]]
 id = "compose-impact"
@@ -33,6 +55,15 @@ expected = """Production callers: src/hono-base.ts (in `#dispatch`, and in `moun
 with the error handler) and src/middleware/combine/index.ts. Tests in src/compose.test.ts are \
 listed separately. Names the parameters (middleware array, onError, onNotFound) that callers \
 pass."""
+items = [
+    "src/hono-base.ts `#dispatch` as a production caller",
+    "the second production call in src/hono-base.ts (mounting or route handling, with the error handler)",
+    "src/middleware/combine/index.ts as a production caller",
+    "src/compose.test.ts listed separately as tests",
+    "the middleware array parameter",
+    "the `onError` parameter",
+    "the `onNotFound` parameter",
+]
 
 [[task]]
 id = "http-exception"
@@ -44,6 +75,17 @@ expected = """Lists the middleware and helpers that construct it (for example ba
 bearer-auth, jwt, body-limit, validator, csrf). Names the default `errorHandler` in \
 src/hono-base.ts, which calls `getResponse()` for HTTPException instances, as the place it \
 becomes a response. Every `new HTTPException(...)` site breaks on a constructor change."""
+items = [
+    "basic-auth middleware constructs it",
+    "bearer-auth middleware constructs it",
+    "jwt middleware constructs it",
+    "body-limit middleware constructs it",
+    "validator constructs it",
+    "csrf middleware constructs it",
+    "the default `errorHandler` in src/hono-base.ts as where it becomes a response",
+    "`getResponse()` called for HTTPException instances",
+    "every `new HTTPException(...)` site breaks on a constructor change",
+]
 
 [[task]]
 id = "cookie-orientation"
@@ -55,3 +97,15 @@ expected = """Parsing and serialization in src/utils/cookie.ts (`parse`, `serial
 variants). The public helpers in src/helper/cookie/index.ts (`getCookie`, `setCookie`, \
 `deleteCookie`, signed variants) wrap them. Middleware or helpers that use them are named, for \
 example csrf or jwt cookie options where present."""
+items = [
+    "src/utils/cookie.ts as where parsing and serialization happen",
+    "`parse` in src/utils/cookie.ts",
+    "`serialize` in src/utils/cookie.ts",
+    "the signed variants in src/utils/cookie.ts",
+    "src/helper/cookie/index.ts as the public helpers",
+    "`getCookie`",
+    "`setCookie`",
+    "`deleteCookie`",
+    "the signed helper variants",
+    "at least one middleware that uses the helpers, such as jwt",
+]

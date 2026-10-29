@@ -18,6 +18,10 @@ path = "report.rs"
 name = "tasks"
 path = "tasks.rs"
 
+[[bin]]
+name = "grade"
+path = "grade.rs"
+
 [dependencies]
 anyhow.workspace = true
 serde.workspace = true
