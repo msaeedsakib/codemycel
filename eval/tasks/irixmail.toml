@@ -28,7 +28,7 @@ Answer in at most 20 lines; do not modify any file."""
 expected = """Lists the non-test call sites by file and function, notes that callers hold \
 `Arc<dyn Store>`/`&dyn Store` so every implementation must change with the trait, and names \
 `RocksdbStore::batch_conditional` in crates/store/src/rocksdb_write.rs as the production override \
-beside the trait's default body. Test stores that override it may be mentioned as also breaking."""
+beside the trait's default body. No test store overrides it; they all use the default body."""
 items = [
     "`update_messages` in crates/mail/src/read.rs as the non-test call site",
     "callers hold `dyn Store`, so every implementation must change with the trait",
@@ -62,15 +62,19 @@ kind = "impact"
 prompt = """Who calls `enqueue` in crates/smtp/src/queue_enqueue.rs, and what would break if it \
 gained a new required parameter? Separate production callers from tests. Answer in at most 15 \
 lines; do not modify any file."""
-expected = """Production callers include `crates/smtp/src/sub_enqueue.rs` and the bounce/DSN path in \
-crates/smtp/src/queue_deliver.rs, and anything above them that is reached transitively; the \
-tests in queue_deliver.rs and queue_enqueue.rs are listed separately. Each named call site \
-would fail to compile."""
+expected = """Production callers are `crates/smtp/src/sub_enqueue.rs`, the bounce/DSN path in \
+crates/smtp/src/queue_deliver.rs, the four hooks in crates/smtp/src/deliver_hook.rs \
+(`enqueue_relays`, `enqueue_forward`, `bounce_over_quota`, `respond_vacations`) and `boot` in \
+crates/irixmail/src/cmd_run.rs, plus anything above them that is reached transitively; the tests \
+(queue_deliver.rs, queue_enqueue.rs, queue_manager.rs and the crates/http queue and dashboard \
+tests) are listed separately. Each named call site would fail to compile."""
 items = [
     "crates/smtp/src/sub_enqueue.rs as a production caller",
     "the bounce or DSN path in crates/smtp/src/queue_deliver.rs as a production caller",
+    "crates/smtp/src/deliver_hook.rs as a production caller (`enqueue_relays`, `enqueue_forward`, `bounce_over_quota`, `respond_vacations`)",
+    "`boot` in crates/irixmail/src/cmd_run.rs as a production caller",
     "callers reached transitively above them",
-    "the tests in queue_deliver.rs and queue_enqueue.rs listed separately",
+    "the tests listed separately (queue_deliver.rs, queue_enqueue.rs, queue_manager.rs, crates/http queue and dashboard tests)",
     "each named call site would fail to compile",
 ]
 

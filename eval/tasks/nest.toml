@@ -42,9 +42,12 @@ ParseDatePipe, ParseFilePipe, DefaultValuePipe and StandardSchemaValidationPipe.
 calls it through the interface in `PipesConsumer.applyPipes` (packages/core/pipes/pipes-consumer.ts), \
 which `PipesConsumer.apply` reaches from the HTTP `RouterExecutionContext`, the WebSocket \
 `WsContextCreator`, the microservices `RpcContextCreator` and the `ExternalContextCreator`. \
-`ParseArrayPipe` also calls `ValidationPipe.transform` directly. A new required parameter breaks \
-those callers; the implementations keep compiling, because TypeScript accepts an implementation \
-with fewer parameters, though each would need changing to use it."""
+`ParseArrayPipe` also calls `ValidationPipe.transform` directly. A new required parameter on the \
+interface breaks only the interface-typed call in `PipesConsumer.applyPipes`: the context creators \
+call `apply`, whose signature does not change; ParseArrayPipe's call is typed against the concrete \
+`ValidationPipe` and breaks only if that pipe's own `transform` changes too; and the \
+implementations keep compiling, because TypeScript accepts an implementation with fewer \
+parameters, though each would need changing to use it."""
 items = [
     "`ValidationPipe`",
     "`ParseIntPipe`",
@@ -63,7 +66,7 @@ items = [
     "`RpcContextCreator` reaching it through `PipesConsumer.apply`",
     "`ExternalContextCreator` reaching it through `PipesConsumer.apply`",
     "`ParseArrayPipe` calling `ValidationPipe.transform` directly",
-    "the callers break while the implementations keep compiling",
+    "only the interface-typed call in `PipesConsumer.applyPipes` stops compiling; the implementations keep compiling",
 ]
 
 [[task]]

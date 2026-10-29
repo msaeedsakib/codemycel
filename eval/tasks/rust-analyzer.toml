@@ -35,7 +35,7 @@ expected = """The production implementation is `Expander` in crates/load-cargo/s
 implementations live in crates/test-fixture/src/lib.rs (several expanders) and \
 crates/hir-def/src/macro_expansion_tests/mod.rs. The trait-object call is in \
 `CustomProcMacroExpander::expand` in crates/hir-expand/src/proc_macro.rs, through the \
-`Arc<dyn ProcMacroExpander>` it holds, which `expand_proc_macro` and `expand_speculative` in \
+`Arc<dyn ProcMacroExpander>` in the `ProcMacro` it looks up, which `expand_proc_macro` and `expand_speculative` in \
 crates/hir-expand/src/lib.rs reach. Every implementation and that call site would fail to compile."""
 items = [
     "the trait in crates/hir-expand/src/proc_macro.rs",

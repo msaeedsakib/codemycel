@@ -31,9 +31,12 @@ prompt = """Which classes implement the `Router` interface's `match` method in s
 calls `match` outside the routers themselves, and what would break if its signature changed? \
 Answer in at most 20 lines; do not modify any file."""
 expected = """Implementations: RegExpRouter, PreparedRegExpRouter, TrieRouter, LinearRouter, \
-PatternRouter, SmartRouter (which delegates to its candidate routers). Callers: \
-`HonoBase#dispatch` in src/hono-base.ts, plus SmartRouter's own delegation. Every implementation \
-and every caller would need to change; tests that call `match` directly are secondary."""
+PatternRouter, SmartRouter (which delegates to its candidate routers). RegExpRouter and \
+PreparedRegExpRouter take `match` from the shared function in src/router/reg-exp-router/matcher.ts. \
+Callers: `HonoBase#dispatch` in src/hono-base.ts, `getRouterName` in src/helper/dev/index.ts, the \
+combine middleware's `except` and the method-not-allowed middleware (both on a `TrieRouter`), plus \
+SmartRouter's own delegation. Every implementation and every caller would need to change; tests \
+that call `match` directly are secondary."""
 items = [
     "`RegExpRouter` implements `match`",
     "`PreparedRegExpRouter` implements `match`",
@@ -43,6 +46,9 @@ items = [
     "`SmartRouter` implements `match`",
     "`HonoBase#dispatch` in src/hono-base.ts calls `match`",
     "SmartRouter's own delegation to its candidate routers calls `match`",
+    "`getRouterName` in src/helper/dev/index.ts calls `match`",
+    "the combine middleware's `except` and the method-not-allowed middleware call `match` on a `TrieRouter`",
+    "RegExpRouter and PreparedRegExpRouter share the `match` function in src/router/reg-exp-router/matcher.ts",
     "every implementation and every caller would need to change",
 ]
 
@@ -71,10 +77,12 @@ kind = "impact"
 prompt = """Where is `HTTPException` (src/http-exception.ts) thrown in non-test code, where is it \
 caught and turned into a response, and what would break if its constructor changed? Answer in \
 at most 20 lines; do not modify any file."""
-expected = """Lists the middleware and helpers that construct it (for example basic-auth, \
-bearer-auth, jwt, body-limit, validator, csrf). Names the default `errorHandler` in \
-src/hono-base.ts, which calls `getResponse()` for HTTPException instances, as the place it \
-becomes a response. Every `new HTTPException(...)` site breaks on a constructor change."""
+expected = """Lists the middleware and helpers that construct it (basic-auth, bearer-auth, jwt, jwk, \
+body-limit, validator, csrf, ip-restriction, timeout, the proxy helper, and `cloneRawRequest` in \
+src/request.ts). Names the default `errorHandler` in src/hono-base.ts, which calls `getResponse()` on \
+errors that have it (a duck-typed check against `HTTPResponseError`), as the place it becomes a \
+response, and the Cloudflare Pages adapter, which catches it with `instanceof` and returns \
+`getResponse()`. Every `new HTTPException(...)` site breaks on a constructor change."""
 items = [
     "basic-auth middleware constructs it",
     "bearer-auth middleware constructs it",
@@ -82,8 +90,14 @@ items = [
     "body-limit middleware constructs it",
     "validator constructs it",
     "csrf middleware constructs it",
+    "jwk middleware constructs it",
+    "ip-restriction middleware constructs it",
+    "timeout middleware constructs it",
+    "the proxy helper constructs it",
+    "`cloneRawRequest` in src/request.ts constructs it",
     "the default `errorHandler` in src/hono-base.ts as where it becomes a response",
-    "`getResponse()` called for HTTPException instances",
+    "`getResponse()` called for errors that have it (duck-typed through `HTTPResponseError`)",
+    "the Cloudflare Pages adapter catches it with `instanceof` and returns `getResponse()`",
     "every `new HTTPException(...)` site breaks on a constructor change",
 ]
 
