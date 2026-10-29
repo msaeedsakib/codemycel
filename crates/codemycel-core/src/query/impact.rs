@@ -26,7 +26,8 @@ const UNDECIDED: [UnresolvedReason; 3] = [
 impl QueryEngine<'_> {
     /// What depends on `name`, walking incoming `kinds` edges up to `depth` (1 to 5) hops. Each
     /// dependent is listed once, at the first depth that reaches it, sorted by file. Callers of a
-    /// parent the walked node overrides or implements are included, one step up, marked `via`.
+    /// parent the walked node overrides or implements, and of a member that overrides it, are
+    /// included one step away, marked `via` the node they go through.
     pub fn impact(
         &self,
         name: &str,
