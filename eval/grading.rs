@@ -330,6 +330,77 @@ fn squeeze(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Whether a file the patch changes holds the task's signature, whitespace aside, in its edited text.
+pub fn signature_holds(task: &Task, patch: &str, edited: &dyn Fn(&str) -> Option<String>) -> bool {
+    let signature = squeeze(task.signature.as_deref().unwrap_or_default());
+    !signature.is_empty()
+        && hunks(patch)
+            .keys()
+            .filter_map(|file| edited(file))
+            .any(|text| squeeze(&text).contains(&signature))
+}
+
+/// Per listed call site, in order: whether the patch changes a line in the site's window, and
+/// whether a new error lands in it. A window runs from the site's line to the file's next listed
+/// site, or 12 lines when there is none.
+fn site_checks(
+    task: &Task,
+    files: &BTreeMap<String, Vec<Hunk>>,
+    new_errors: &[String],
+) -> Vec<(bool, bool)> {
+    let sites: Vec<(&str, u32)> = task
+        .sites
+        .iter()
+        .flatten()
+        .filter_map(|site| {
+            let (file, line) = site.rsplit_once(':')?;
+            Some((file, line.parse().ok()?))
+        })
+        .collect();
+    let error_lines: Vec<(&str, u32)> = new_errors
+        .iter()
+        .filter_map(|error| {
+            let (file, new) = error_location(error)?;
+            Some((
+                file,
+                files.get(file).map_or(new, |hunks| old_line(hunks, new)),
+            ))
+        })
+        .collect();
+    sites
+        .iter()
+        .map(|&(file, line)| {
+            let end = sites
+                .iter()
+                .filter(|(f, l)| *f == file && *l > line)
+                .map(|(_, l)| *l)
+                .min()
+                .unwrap_or(line + 12);
+            let inside = |at: u32| line <= at && at < end;
+            let touched = files.get(file).is_some_and(|hunks| {
+                hunks.iter().any(|hunk| {
+                    hunk.removed.iter().any(|(l, _)| inside(*l))
+                        || hunk.added.iter().any(|(l, _)| inside(*l))
+                })
+            });
+            let broken = error_lines.iter().any(|(f, l)| *f == file && inside(*l));
+            (touched, broken)
+        })
+        .collect()
+}
+
+/// The listed call sites a planted patch leaves unchanged and the checker breaks: a new error
+/// lands in the site's window. The self-test in `check.sh` requires every site of a task to be
+/// caught by one of its planted patches before the task's runs are graded.
+pub fn caught_sites(task: &Task, patch: &str, new_errors: &[String]) -> Vec<String> {
+    site_checks(task, &hunks(patch), new_errors)
+        .into_iter()
+        .zip(task.sites.iter().flatten())
+        .filter(|((touched, broken), _)| !touched && *broken)
+        .map(|(_, site)| site.clone())
+        .collect()
+}
+
 /// The grade of an edit run from its patch, the edited files' text, and the errors the checker
 /// reports beyond the untouched tree's. Nothing counts unless the definition reads as the task asks
 /// (whitespace aside). A call site is updated when the patch changes it and no new error lands on
@@ -342,13 +413,7 @@ pub fn edit_grade(
     new_errors: &[String],
 ) -> Grade {
     let files = hunks(patch);
-    let signature = squeeze(task.signature.as_deref().unwrap_or_default());
-    let signature_changed = !signature.is_empty()
-        && files
-            .keys()
-            .filter_map(|file| edited(file))
-            .any(|text| squeeze(&text).contains(&signature));
-    if !signature_changed {
+    if !signature_holds(task, patch, edited) {
         return Grade {
             correctness: 0,
             wrong_claims: vec!["the definition was not changed as asked".to_owned()],
@@ -383,46 +448,9 @@ pub fn edit_grade(
         }
     }
 
-    let sites: Vec<(&str, u32)> = task
-        .sites
-        .iter()
-        .flatten()
-        .filter_map(|site| {
-            let (file, line) = site.rsplit_once(':')?;
-            Some((file, line.parse().ok()?))
-        })
-        .collect();
-    let window = |at: usize| -> (u32, u32) {
-        let (file, line) = sites[at];
-        let end = sites
-            .iter()
-            .filter(|(f, l)| *f == file && *l > line)
-            .map(|(_, l)| *l)
-            .min()
-            .unwrap_or(line + 12);
-        (line, end)
-    };
-    let error_lines: Vec<(&str, u32)> = new_errors
-        .iter()
-        .filter_map(|error| {
-            let (file, new) = error_location(error)?;
-            Some((
-                file,
-                files.get(file).map_or(new, |hunks| old_line(hunks, new)),
-            ))
-        })
-        .collect();
+    let checks = site_checks(task, &files, new_errors);
     let mut missing = Vec::new();
-    for (at, (file, _)) in sites.iter().enumerate() {
-        let (start, end) = window(at);
-        let inside = |line: u32| start <= line && line < end;
-        let touched = files.get(*file).is_some_and(|hunks| {
-            hunks.iter().any(|hunk| {
-                hunk.removed.iter().any(|(l, _)| inside(*l))
-                    || hunk.added.iter().any(|(l, _)| inside(*l))
-            })
-        });
-        let broken = error_lines.iter().any(|(f, l)| f == file && inside(*l));
+    for (at, &(touched, broken)) in checks.iter().enumerate() {
         if !touched || broken {
             missing.push(task.items.get(at).cloned().unwrap_or_else(|| {
                 task.sites
@@ -434,14 +462,14 @@ pub fn edit_grade(
             }));
         }
     }
-    let updated = sites.len() - missing.len();
+    let updated = checks.len() - missing.len();
     Grade {
         correctness: 100u32.saturating_sub(25 * wrong.len() as u32),
         wrong_claims: wrong,
-        completeness: if sites.is_empty() {
+        completeness: if checks.is_empty() {
             0.0
         } else {
-            updated as f64 / sites.len() as f64
+            updated as f64 / checks.len() as f64
         },
         missing,
     }

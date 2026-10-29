@@ -4,14 +4,22 @@
 # the untouched tree decide the grade: the definition must read as the task asks, a call site counts
 # as updated when the patch changes it and no new error lands on it, and new errors, text that
 # silences the checker, and deleted calls are wrong claims. The grade lands beside the run as
-# <run>.grade.json. No model is involved. Before a task is graded, its planted patch
-# (tasks/planted/<task>.patch: the definition changed, no caller) must break every listed site.
+# <run>.grade.json. No model is involved.
+#
+# Before a task is graded, a self-test proves the checker catches each listed site. Every patch in
+# tasks/planted/<task>/ changes the definition as the task asks and leaves some callers unfixed;
+# its definition must hold the task's signature, and every site must be caught by at least one
+# planted patch: the patch leaves the site unchanged and the checker reports a new error on it.
+# A task needs several planted patches when one break hides another, as when `cargo check` stops
+# at the first crate that fails and never reaches a caller in a downstream crate. A task whose
+# self-test fails is not graded.
 #
 # Usage: eval/check.sh [repo...]
 # Checkers: `typescript` type-checks the production sources (the repository's tsconfig.build.json)
-# with the TypeScript 7 compiler
-# codemycel provisions (TSC, default ~/.codemycel/servers/typescript/*/tsc), skipping type packages
-# so no node_modules are needed; `cargo` runs `cargo check --workspace`, which leaves tests out.
+# with the TypeScript 7 compiler codemycel provisions (TSC, default
+# ~/.codemycel/servers/typescript/*/tsc), skipping type packages so no node_modules are needed;
+# `cargo` runs `cargo check --workspace`, which leaves tests out. A checker that cannot be found
+# stops the script.
 set -euo pipefail
 
 eval_dir=$(cd "$(dirname "$0")" && pwd)
@@ -29,6 +37,19 @@ target_dir=$(cargo metadata --format-version 1 --no-deps --manifest-path "$root/
     grep -o '"target_directory":"[^"]*"' | cut -d '"' -f 4)
 bin="$target_dir/release"
 
+require_checker() {
+    case $1 in
+    typescript)
+        if [ -z "$tsc" ] || [ ! -x "$tsc" ]; then
+            echo "no TypeScript compiler found; run codemycel once on a TypeScript repository or set TSC" >&2
+            exit 1
+        fi
+        ;;
+    cargo) command -v cargo >/dev/null || { echo "cargo is not on PATH" >&2 && exit 1; } ;;
+    *) echo "unknown checker $1" >&2 && exit 1 ;;
+    esac
+}
+
 # The checker's errors for the tree in $1, one per line.
 errors() {
     local dir=$1 checker=$2
@@ -44,8 +65,33 @@ errors() {
             cargo check --quiet --workspace --message-format short 2>&1 || true) |
             grep ': error' || true
         ;;
-    *) echo "unknown checker $checker" >&2 && return 1 ;;
     esac
+}
+
+reset_check() {
+    git -C "$check" checkout --quiet -- .
+    git -C "$check" clean --quiet -fd
+}
+
+# Runs the task's planted patches and prints the sites none of them caught. Fails when a planted
+# patch does not apply or its definition does not hold the task's signature.
+self_test() {
+    local scratch planted uncaught= status=0
+    scratch=$(mktemp -d)
+    for planted in "$eval_dir/tasks/planted/$task"/*.patch; do
+        if [ ! -f "$planted" ]; then
+            echo "no planted patch in tasks/planted/$task" >&2
+            status=1 && break
+        fi
+        reset_check
+        git -C "$check" apply --whitespace=nowarn "$planted" || { status=1 && break; }
+        errors "$check" "$checker" >"$scratch/errors.txt"
+        uncaught=$("$bin/grade" planted "$tasks" "$task_logs" "$planted" "$baseline" \
+            "$scratch/errors.txt" "$check" "$scratch/caught.txt") || { status=1 && break; }
+    done
+    rm -rf "$scratch"
+    printf '%s' "$uncaught"
+    return $status
 }
 
 for repo in "${repos[@]}"; do
@@ -55,32 +101,28 @@ for repo in "${repos[@]}"; do
         [ "$kind" = edit ] || continue
         task_logs=$eval_dir/logs/$repo/$task
         [ -d "$task_logs" ] || continue
+        require_checker "$checker"
         if [ ! -d "$check/.git" ]; then
             git clone --quiet "$work/$repo" "$check"
         fi
+        reset_check
         git -C "$check" checkout --quiet --detach "$(git -C "$work/$repo" rev-parse HEAD)"
         baseline=$task_logs/baseline-errors.txt
         if [ ! -f "$baseline" ]; then
             errors "$check" "$checker" >"$baseline"
         fi
 
-        # Self-test: the planted patch changes the definition and no caller, so the checker must
-        # break every listed site and the grade must count none of them as updated.
-        planted=$eval_dir/tasks/planted/$task.patch
-        scratch=$(mktemp -d)
-        cp "$planted" "$scratch/0.patch"
-        echo '{"type":"result","is_error":false,"result":"","modelUsage":{}}' >"$scratch/0.jsonl"
-        git -C "$check" apply --whitespace=nowarn "$planted"
-        errors "$check" "$checker" >"$scratch/0.errors.txt"
-        "$bin/grade" edit "$tasks" "$task_logs" "$scratch/0.jsonl" "$baseline" "$scratch/0.errors.txt" "$check" >/dev/null
-        if ! grep -q '"completeness": 0.0' "$scratch/0.grade.json" ||
-            grep -q 'not changed as asked' "$scratch/0.grade.json"; then
-            echo "$repo $task: the planted break was not caught; not grading this task" >&2
-            cat "$scratch/0.grade.json" >&2
-            rm -rf "$scratch"
+        if ! uncaught=$(self_test); then
+            reset_check
+            echo "$repo $task: a planted patch failed; not grading this task" >&2
             continue
         fi
-        rm -rf "$scratch"
+        reset_check
+        if [ -n "$uncaught" ]; then
+            echo "$repo $task: no planted patch broke these sites; not grading this task:" >&2
+            echo "$uncaught" >&2
+            continue
+        fi
 
         for patch in "$task_logs"/*/*.patch; do
             [ -f "$patch" ] || continue
@@ -88,8 +130,7 @@ for repo in "${repos[@]}"; do
             if [ -f "${patch%.patch}.grade.json" ] || ! grep -q '"type":"result"' "$log" 2>/dev/null; then
                 continue
             fi
-            git -C "$check" checkout --quiet -- .
-            git -C "$check" clean --quiet -fd
+            reset_check
             if [ -s "$patch" ]; then
                 git -C "$check" apply --whitespace=nowarn "$patch" || echo "  the patch does not apply" >&2
             fi
@@ -97,8 +138,7 @@ for repo in "${repos[@]}"; do
             echo -n "$repo $task $(basename "$(dirname "$patch")") $(basename "$patch" .patch): "
             "$bin/grade" edit "$tasks" "$task_logs" "$log" "$baseline" "${patch%.patch}.errors.txt" "$check"
         done
-        git -C "$check" checkout --quiet -- .
-        git -C "$check" clean --quiet -fd
+        reset_check
     done < <("$bin/tasks" "$tasks")
 done
 

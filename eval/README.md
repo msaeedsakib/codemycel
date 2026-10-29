@@ -26,8 +26,8 @@ answer (`expected`) and the checklist completeness is graded against (`items`). 
 the impact tasks were checked against language-server references (rust-analyzer and TypeScript 7
 `references` and `implementation`). Each edit task also lists its call sites (`sites`), the
 function whose calls must survive (`callee`), the text the new definition must contain
-(`signature`), the checker that judges it (`check`), and a planted patch in `tasks/planted/` that
-changes the definition and no caller.
+(`signature`), the checker that judges it (`check`), and one or more planted patches in
+`tasks/planted/<task>/` that change the definition as asked and leave callers unfixed.
 
 ## How a run works
 
@@ -77,8 +77,14 @@ the untouched tree's errors as a multiset of file and message, ignoring position
   - an added line that silences the checker (`as any`, `@ts-ignore`, `todo!()`, `#[allow(…)]`, …);
   - a hunk that deletes a call to the target.
 
-Before a task is graded, its planted patch must break every listed site. Otherwise the task is not
-graded.
+Before a task is graded, a self-test proves the checker catches every listed site. Each planted
+patch is applied in turn; its definition must contain the signature, and every site must be caught
+by at least one planted patch, meaning the patch leaves that site unchanged and the checker reports
+a new error on it. One patch is not always enough: `cargo check` stops at the first crate that
+fails, so for `enqueue-edit` one patch changes only the definition and breaks the `smtp` callers,
+and a second also fixes those callers so the check reaches and breaks the caller in the `irixmail`
+crate. If a site is not caught, the task is not graded. `check.sh` stops when the checker itself
+cannot be found.
 
 The verdicts land beside each run as `<run>.grade.json`, and the grader's own log as
 `grader-<time>.jsonl` in the task's directory.
