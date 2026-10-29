@@ -1,6 +1,10 @@
-use super::{ExitCode, not_implemented};
+use codemycel_core::query::Budget;
+
+use super::ExitCode;
 use crate::cli::{Context, OverviewArgs};
 
-pub fn run(_args: &OverviewArgs, _ctx: &Context) -> anyhow::Result<ExitCode> {
-    not_implemented("overview")
+pub fn run(args: &OverviewArgs, ctx: &Context) -> anyhow::Result<ExitCode> {
+    super::query(ctx, |engine| {
+        engine.overview(args.scope.as_deref(), Budget::new(args.max_tokens))
+    })
 }

@@ -26,6 +26,7 @@ flate2 = "1.1.10"
 futures = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
 globset = "0.4.21"
 ignore = "0.4.34"
+jsonc-parser = { version = "0.34.0", features = ["cst", "serde_json"] }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "serde"] }
 lsp-types = "0.97.0"
 nix = { version = "0.31.3", features = ["signal"] }
@@ -33,15 +34,19 @@ notify = "8.2.1"
 petgraph = { version = "0.8.3", default-features = false, features = ["std", "graphmap"] }
 protobuf = "=3.7.2"
 rayon = "1.12.0"
+rmcp = { version = "3.8.0", default-features = false, features = ["server", "macros", "transport-io", "schemars"] }
 rusqlite = { version = "0.41.0", features = ["bundled"] }
+schemars = "1.2.3"
+semver = "1.0.28"
 serde = { version = "1.0.229", features = ["derive"] }
 scip = "0.10.0"
 serde_json = "1"
 sha2 = "0.11.1"
 tar = "0.4.46"
 thiserror = "2.0.21"
-tokio = { version = "1.54.1", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.54.1", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "1.1.8"
+toml_edit = "0.25.17"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 ureq = { version = "3.5.0", default-features = false, features = ["rustls"] }

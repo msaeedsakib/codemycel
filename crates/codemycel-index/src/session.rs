@@ -7,13 +7,12 @@ use std::time::{Duration, Instant};
 use codemycel_core::SyncOwner;
 use codemycel_core::config::paths::REPO_DIR_NAME;
 use codemycel_core::config::{Config, ConfigError};
-use codemycel_core::store::Store;
 use codemycel_lsp::EnrichOptions;
 use thiserror::Error;
 
 use crate::{
     INDEX_FILE_NAME, IndexError, Lock, LockGuard, LockKind, Pipeline, Registry, Scip, ServerPool,
-    Sources, SyncMode, SyncReport, Watcher, WatcherHandle,
+    Sources, SyncMode, SyncReport, Watcher, WatcherHandle, open_or_rebuild,
 };
 
 #[derive(Debug, Error)]
@@ -84,7 +83,8 @@ enum Message {
 
 /// The session process's sync loop, on its own thread. It holds `session.lock` for its
 /// lifetime, retrying while another session holds it, then watches the repository, runs a
-/// catch-up incremental sync, and syncs again after every change set, each sync under
+/// catch-up incremental sync (full when the index is of another schema version and is
+/// rebuilt), and syncs again after every change set, each sync under
 /// `sync.lock`. Language servers stay warm between syncs. Dropping it shuts it down.
 pub struct SessionLoop {
     repo_root: PathBuf,
@@ -327,7 +327,12 @@ fn sync_once(
 ) -> Result<SyncReport, SessionError> {
     let config = Config::load_with_home(repo_root, home)?;
     let db = repo_root.join(REPO_DIR_NAME).join(INDEX_FILE_NAME);
-    let mut store = Store::open(&db, false).map_err(IndexError::from)?;
+    let (mut store, opened) = open_or_rebuild(&db)?;
+    let mode = if opened.needs_full_sync() {
+        SyncMode::Full
+    } else {
+        SyncMode::Incremental
+    };
     let scip = Pipeline::load_scip(repo_root, &config, &store, None)?;
     let sources = Sources {
         servers: pool,
@@ -338,11 +343,6 @@ fn sync_once(
         progress: &(),
     };
     Ok(Pipeline::sync(
-        repo_root,
-        &config,
-        &mut store,
-        registry,
-        &sources,
-        SyncMode::Incremental,
+        repo_root, &config, &mut store, registry, &sources, mode,
     )?)
 }

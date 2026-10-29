@@ -11,5 +11,17 @@ publish.workspace = true
 codemycel-core.workspace = true
 codemycel-index.workspace = true
 
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+rmcp = { workspace = true, features = ["client", "transport-child-process"] }
+tempfile.workspace = true
+
 [lints]
 workspace = true

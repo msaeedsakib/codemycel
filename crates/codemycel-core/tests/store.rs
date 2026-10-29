@@ -490,7 +490,7 @@ fn delete_file_cascades() {
     assert!(store.nodes_in_file(&a).unwrap().is_empty());
     assert!(store.unresolved_for_file(&a).unwrap().is_empty());
     assert!(store.impl_records_in_file(&a).unwrap().is_empty());
-    assert!(store.search_fts("foo", 10).unwrap().is_empty());
+    assert!(store.search_fts("foo", &[]).unwrap().is_empty());
     assert_eq!(store.dump_impl_records().unwrap(), "");
     assert_eq!(
         store.dump_nodes().unwrap(),
@@ -501,7 +501,7 @@ fn delete_file_cascades() {
         store.dump_unresolved().unwrap(),
         "src/b.rs:5:4\tcall\tprintln\texternal_dependency\n"
     );
-    assert_eq!(store.search_fts("main", 10).unwrap().len(), 1);
+    assert_eq!(store.search_fts("main", &[]).unwrap().len(), 1);
 }
 
 #[test]
@@ -614,7 +614,7 @@ fn fts_finds_split_name() {
         })
         .unwrap();
 
-    let hits = store.search_fts("limiter", 10).unwrap();
+    let hits = store.search_fts("limiter", &[]).unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].name, "RateLimiter");
     assert_eq!(hits[0].kind, NodeKind::Struct);

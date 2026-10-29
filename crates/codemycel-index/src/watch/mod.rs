@@ -20,6 +20,11 @@ impl Watcher {
     /// The quiet period after the last event before its change set is emitted.
     pub const DEBOUNCE: Duration = Duration::from_millis(500);
 
+    /// The platform's file-event backend, as `notify` names it.
+    pub fn backend() -> String {
+        format!("{:?}", RecommendedWatcher::kind()).to_lowercase()
+    }
+
     /// Watches `repo_root` recursively, skipping what the walk ignores (`ignore` holds the
     /// config's globs) and `.codemycel/`. `on_change` runs on the watcher's thread with each
     /// change set, once `debounce` passes without a kept event.

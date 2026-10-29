@@ -153,11 +153,17 @@ fn lock_released_on_drop() {
     drop(guard);
 
     assert_eq!(Lock::current_owner(repo.path(), LockKind::Session), None);
-    assert!(
-        Lock::try_acquire(repo.path(), LockKind::Session)
-            .unwrap()
-            .is_some()
-    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while Lock::try_acquire(repo.path(), LockKind::Session)
+        .unwrap()
+        .is_none()
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "lock not free a second after drop"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 #[test]

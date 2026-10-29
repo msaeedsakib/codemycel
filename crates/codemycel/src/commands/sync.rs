@@ -1,15 +1,14 @@
 use std::collections::BTreeMap;
-use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::Context as _;
 use codemycel_core::config::Config;
-use codemycel_core::store::{Store, StoreError, StoreRead, meta};
+use codemycel_core::store::{SCHEMA_VERSION, Store, StoreRead, meta};
 use codemycel_core::{SkipReason, UnresolvedReason};
 use codemycel_index::{
-    BatchServers, Lock, LockKind, Pipeline, Registry, RepoLocation, RepoRegistry, Scip, Sources,
-    SyncMode, SyncReport,
+    BatchServers, Lock, LockKind, Opened, Pipeline, Registry, RepoLocation, RepoRegistry, Scip,
+    Sources, SyncMode, SyncReport, open_or_rebuild, sibling,
 };
 use codemycel_lsp::{EnrichOptions, Provisioner};
 
@@ -64,7 +63,16 @@ pub(super) fn index(
     let config = Config::load(repo)?;
     let home = codemycel_core::config::home_dir()?;
     let db = location.index_path();
-    let (mut store, mode) = open_or_rebuild(&db, mode)?;
+    let (mut store, opened) =
+        open_or_rebuild(&db).with_context(|| format!("opening {}", db.display()))?;
+    if let Opened::Rebuilt { found } = &opened {
+        eprintln!("index schema {found} replaced by {SCHEMA_VERSION}: full build");
+    }
+    let mode = if opened.needs_full_sync() {
+        SyncMode::Full
+    } else {
+        mode
+    };
     let provisioner = Provisioner::new(&config, home.clone(), !(no_download || config.no_download));
     let servers = BatchServers {
         provisioner: &provisioner,
@@ -98,36 +106,6 @@ pub(super) fn index(
     } else {
         ExitCode::Ok
     })
-}
-
-/// The store at `db`, created when missing. Missing or of another schema version, the sync is
-/// full.
-fn open_or_rebuild(db: &Path, mode: SyncMode) -> anyhow::Result<(Store, SyncMode)> {
-    if !db.exists() {
-        return Ok((Store::create(db)?, SyncMode::Full));
-    }
-    match Store::open(db, false) {
-        Ok(store) => Ok((store, mode)),
-        Err(StoreError::SchemaMismatch { found, expected }) => {
-            eprintln!("index schema {found} replaced by {expected}: full build");
-            for path in [db.to_owned(), sibling(db, "-wal"), sibling(db, "-shm")] {
-                match std::fs::remove_file(&path) {
-                    Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                        return Err(error).with_context(|| format!("removing {}", path.display()));
-                    }
-                    _ => {}
-                }
-            }
-            Ok((Store::create(db)?, SyncMode::Full))
-        }
-        Err(error) => Err(error).with_context(|| format!("opening {}", db.display())),
-    }
-}
-
-fn sibling(db: &Path, suffix: &str) -> PathBuf {
-    let mut name = OsString::from(db.as_os_str());
-    name.push(suffix);
-    PathBuf::from(name)
 }
 
 /// Prints what the index holds after the sync; `true` when a root is degraded.

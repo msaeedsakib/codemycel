@@ -42,6 +42,7 @@ impl Sandbox {
             .arg("--no-download")
             .current_dir(&self.repo)
             .env("CODEMYCEL_HOME", &self.home)
+            .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
             .env("PATH", &empty)
             .assert()
     }
@@ -110,6 +111,7 @@ fn init_summary_lists_counts_and_coverage() {
         .args(["init", "--no-download"])
         .current_dir(&sandbox.repo)
         .env("CODEMYCEL_HOME", &sandbox.home)
+        .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
         .assert()
         .code(0)
         .stdout(

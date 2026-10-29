@@ -3,6 +3,8 @@
 pub mod config;
 pub mod logging;
 pub mod model;
+pub mod query;
+pub mod rank;
 pub mod store;
 pub mod text;
 pub mod traits;

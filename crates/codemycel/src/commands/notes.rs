@@ -1,6 +1,14 @@
-use super::{ExitCode, not_implemented};
+use codemycel_core::query::Budget;
+
+use super::ExitCode;
 use crate::cli::{Context, NotesArgs};
 
-pub fn run(_args: &NotesArgs, _ctx: &Context) -> anyhow::Result<ExitCode> {
-    not_implemented("notes")
+pub fn run(args: &NotesArgs, ctx: &Context) -> anyhow::Result<ExitCode> {
+    super::query(ctx, |engine| {
+        engine.notes(
+            args.target.as_deref(),
+            args.orphans,
+            Budget::new(args.max_tokens),
+        )
+    })
 }
