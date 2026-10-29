@@ -1,0 +1,94 @@
+# Tasks run against nestjs/nest at the commit pinned in eval/README.md.
+# `expected` describes a correct answer's shape so a reader can judge the logged answers.
+
+[[task]]
+id = "http-route-orientation"
+kind = "orientation"
+prompt = """How does an HTTP request reach a controller method in this repository? Name the files \
+and functions on the path, from where the application registers its routes to where the \
+controller method is finally invoked, including where guards, pipes and interceptors run. Answer \
+in at most 15 lines; do not modify any file."""
+expected = """`NestApplication.registerRouter` (packages/core/nest-application.ts) calls \
+`RoutesResolver.resolve`/`registerRouters` (packages/core/router/routes-resolver.ts), which calls \
+`RouterExplorer.explore` (packages/core/router/router-explorer.ts). `applyCallbackToRouter` binds \
+the route on the HTTP adapter through `RouterMethodFactory` (packages/core/helpers/router-method-factory.ts) \
+with a handler from `createCallbackProxy`, which wraps `RouterExecutionContext.create` \
+(packages/core/router/router-execution-context.ts) in the router proxy's exception handling. The \
+created handler runs guards, interceptors and pipes, then calls the controller method with \
+`callback.apply`. The adapter (Express or Fastify in packages/platform-*) is the `HttpServer` the \
+routes are registered on."""
+items = [
+    "`NestApplication.registerRouter` in packages/core/nest-application.ts",
+    "`RoutesResolver.resolve` or `registerRouters` in packages/core/router/routes-resolver.ts",
+    "`RouterExplorer.explore` in packages/core/router/router-explorer.ts",
+    "`applyCallbackToRouter` binding the route on the adapter through `RouterMethodFactory`",
+    "`createCallbackProxy` wrapping the handler with exception handling",
+    "`RouterExecutionContext.create` in packages/core/router/router-execution-context.ts",
+    "guards, interceptors and pipes run inside the created handler",
+    "the controller method invoked with `callback.apply`",
+    "the Express or Fastify adapter as the `HttpServer` the routes are registered on",
+]
+
+[[task]]
+id = "pipe-transform-impact"
+kind = "impact"
+prompt = """Which classes implement `PipeTransform.transform` (the interface in \
+packages/common/interfaces/features/pipe-transform.interface.ts), where does the framework call \
+`transform` through that interface, and what would break if `transform` gained a new required \
+parameter? Separate production code from tests. Answer in at most 20 lines; do not modify any file."""
+expected = """Production implementations are the pipes in packages/common/pipes: ValidationPipe, \
+ParseIntPipe, ParseFloatPipe, ParseBoolPipe, ParseArrayPipe, ParseUUIDPipe, ParseEnumPipe, \
+ParseDatePipe, ParseFilePipe, DefaultValuePipe and StandardSchemaValidationPipe. The framework \
+calls it through the interface in `PipesConsumer.applyPipes` (packages/core/pipes/pipes-consumer.ts), \
+which `PipesConsumer.apply` reaches from the HTTP `RouterExecutionContext`, the WebSocket \
+`WsContextCreator`, the microservices `RpcContextCreator` and the `ExternalContextCreator`. \
+`ParseArrayPipe` also calls `ValidationPipe.transform` directly. A new required parameter breaks \
+those callers; the implementations keep compiling, because TypeScript accepts an implementation \
+with fewer parameters, though each would need changing to use it."""
+items = [
+    "`ValidationPipe`",
+    "`ParseIntPipe`",
+    "`ParseFloatPipe`",
+    "`ParseBoolPipe`",
+    "`ParseArrayPipe`",
+    "`ParseUUIDPipe`",
+    "`ParseEnumPipe`",
+    "`ParseDatePipe`",
+    "`ParseFilePipe`",
+    "`DefaultValuePipe`",
+    "`StandardSchemaValidationPipe`",
+    "the call through the interface in `PipesConsumer.applyPipes` in packages/core/pipes/pipes-consumer.ts",
+    "`RouterExecutionContext` reaching it through `PipesConsumer.apply`",
+    "`WsContextCreator` reaching it through `PipesConsumer.apply`",
+    "`RpcContextCreator` reaching it through `PipesConsumer.apply`",
+    "`ExternalContextCreator` reaching it through `PipesConsumer.apply`",
+    "`ParseArrayPipe` calling `ValidationPipe.transform` directly",
+    "the callers break while the implementations keep compiling",
+]
+
+[[task]]
+id = "tcp-message-trace"
+kind = "orientation"
+prompt = """How does a request message arriving on a TCP microservice reach the controller method \
+decorated with `@MessagePattern`, and how does the reply get back? Give the chain of functions, \
+including where the handler is registered and where guards, pipes and interceptors are applied. \
+Answer in at most 20 lines; do not modify any file."""
+expected = """`ServerTCP.bindHandler` (packages/microservices/server/server-tcp.ts) wires each socket's \
+messages to `ServerTCP.handleMessage`, which deserializes the packet (events without an id go to \
+`handleEvent`) and looks the handler up with `Server.getHandlerByPattern` \
+(packages/microservices/server/server.ts). Handlers were registered by \
+`ListenersController.registerPatternHandlers` (packages/microservices/listeners-controller.ts, called \
+from `MicroservicesModule`) through `addHandler`, each built by `RpcContextCreator.create` \
+(packages/microservices/context/rpc-context-creator.ts), which applies guards, interceptors and pipes \
+before calling the controller method. The result is turned into an observable and sent back with \
+`socket.sendMessage` after serialization."""
+items = [
+    "`ServerTCP.bindHandler` in packages/microservices/server/server-tcp.ts",
+    "`ServerTCP.handleMessage` deserializing the packet",
+    "`Server.getHandlerByPattern` in packages/microservices/server/server.ts",
+    "`ListenersController.registerPatternHandlers` registering handlers with `addHandler`",
+    "`RpcContextCreator.create` in packages/microservices/context/rpc-context-creator.ts building the handler",
+    "guards, interceptors and pipes applied by the created handler",
+    "the reply serialized and sent with `socket.sendMessage`",
+    "events without an id handled by `handleEvent` instead",
+]

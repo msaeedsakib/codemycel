@@ -109,3 +109,22 @@ items = [
     "the signed helper variants",
     "at least one middleware that uses the helpers, such as jwt",
 ]
+
+[[task]]
+id = "cookie-parse-edit"
+kind = "edit"
+prompt = """Change `parse` in src/utils/cookie.ts so that it takes a new required first parameter \
+`strict: boolean`, giving `parse(strict: boolean, cookie: string, name?: string)`, and update \
+every call site of this `parse` outside test files to pass `false` as that first argument. Do not \
+change its behaviour, do not edit test files, and do not change any other function."""
+expected = """The signature in src/utils/cookie.ts gains `strict: boolean` first. The call in \
+`parseSigned` (src/utils/cookie.ts) and the two calls in `getCookie` (src/helper/cookie/index.ts) \
+pass `false` first. No other `parse` (JSON.parse, other modules' parse functions) is touched. The \
+production build type-checks with no new errors."""
+items = [
+    "the call in `parseSigned` in src/utils/cookie.ts",
+    "the call with a key in `getCookie` in src/helper/cookie/index.ts",
+    "the call without a key in `getCookie` in src/helper/cookie/index.ts",
+]
+check = "typescript"
+signature = "parse = (strict: boolean, cookie: string, name?: string)"

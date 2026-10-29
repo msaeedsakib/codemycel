@@ -6,7 +6,7 @@
 # each run as <run>.grade.json and the grader's own log as grader-<time>.jsonl in the task's
 # directory. Run it after eval/run.sh; the report then shows the grades.
 #
-# Usage: eval/grade.sh [hono] [irixmail]
+# Usage: eval/grade.sh [repo...] (default: hono irixmail rust-analyzer nest)
 # GRADE_MODEL picks the grader's model (default opus); with ANTHROPIC_API_KEY set, it runs --bare.
 set -euo pipefail
 
@@ -16,7 +16,7 @@ work=${EVAL_WORK:-${XDG_CACHE_HOME:-$HOME/.cache}/codemycel-eval}
 
 repos=("$@")
 if [ ${#repos[@]} -eq 0 ]; then
-    repos=(hono irixmail)
+    repos=(hono irixmail rust-analyzer nest)
 fi
 
 cargo build --quiet --release --manifest-path "$root/Cargo.toml" -p codemycel-eval

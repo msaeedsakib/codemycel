@@ -68,6 +68,9 @@ pub fn load_grade(log: &Path) -> anyhow::Result<Option<Grade>> {
 /// The grading prompt for every answered, ungraded run of a task, or `None` when there is none.
 /// Writes the key from neutral numbers to runs into the task's log directory.
 pub fn prompt(task_logs: &Path, task: &Task) -> anyhow::Result<Option<String>> {
+    if task.check.is_some() {
+        return Ok(None);
+    }
     let mut answers = Vec::new();
     for mode in MODES {
         let dir = task_logs.join(mode);
@@ -181,4 +184,55 @@ pub fn store(task_logs: &Path, task: &Task, grader_log: &str) -> anyhow::Result<
     }
     std::fs::remove_file(task_logs.join(KEY_FILE))?;
     Ok(stored)
+}
+
+/// The checker's errors in `after` that `baseline` does not hold, compared without positions so
+/// that lines moved by the edit still match. Each line is one error as the checker prints it.
+pub fn new_errors(baseline: &str, after: &str) -> Vec<String> {
+    let mut known: Vec<String> = baseline.lines().filter_map(error_key).collect();
+    let mut new = Vec::new();
+    for line in after.lines() {
+        let Some(key) = error_key(line) else {
+            continue;
+        };
+        match known.iter().position(|k| *k == key) {
+            Some(at) => {
+                known.swap_remove(at);
+            }
+            None => new.push(line.trim().to_owned()),
+        }
+    }
+    new
+}
+
+/// `src/a.ts(39,23): error TS2345: …` or `src/a.rs:39:23: error[E0061]: …` without its position.
+fn error_key(line: &str) -> Option<String> {
+    let at = line.find(": error")?;
+    let location = &line[..at];
+    let file = location.split_once('(').map_or_else(
+        || location.split(':').next().unwrap_or(location),
+        |(f, _)| f,
+    );
+    Some(format!("{file}{}", &line[at..]))
+}
+
+/// The grade of an edit run: nothing counts unless the definition was changed as asked; then each
+/// error the edit introduced is a call site it missed or broke.
+pub fn edit_grade(task: &Task, signature_changed: bool, new_errors: &[String]) -> Grade {
+    let sites = task.items.len().max(1);
+    if !signature_changed {
+        return Grade {
+            correctness: 0,
+            wrong_claims: vec!["the definition was not changed as asked".to_owned()],
+            completeness: 0.0,
+            missing: task.items.clone(),
+        };
+    }
+    let missed = new_errors.len().min(sites);
+    Grade {
+        correctness: 100u32.saturating_sub(25 * new_errors.len() as u32),
+        wrong_claims: new_errors.to_vec(),
+        completeness: (sites - missed) as f64 / sites as f64,
+        missing: Vec::new(),
+    }
 }

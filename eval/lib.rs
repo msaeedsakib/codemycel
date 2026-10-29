@@ -19,8 +19,13 @@ pub struct Task {
     pub prompt: String,
     /// The shape of a correct answer, for a reader judging the logs.
     pub expected: String,
-    /// The checklist completeness is graded against, taken from `expected`.
+    /// The checklist completeness is graded against, taken from `expected`. For an edit task,
+    /// the call sites the edit must update.
     pub items: Vec<String>,
+    /// For an edit task, the checker that judges the edited tree: `typescript` or `cargo`.
+    pub check: Option<String>,
+    /// For an edit task, text the edited definition must contain.
+    pub signature: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -35,15 +35,46 @@ fn write(root: &Path, repo: &str, task: &str, mode: &str, run: u32, text: &str) 
 }
 
 #[test]
-fn committed_task_files_hold_five_tasks_each() {
-    for repo in ["hono", "irixmail"] {
+fn committed_task_files_have_unique_ids_and_complete_edit_tasks() {
+    for repo in ["hono", "irixmail", "rust-analyzer", "nest"] {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tasks/{repo}.toml"));
         let tasks = codemycel_eval::load_tasks(&path).unwrap();
         let mut ids: Vec<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!((tasks.len(), ids.len()), (5, 5), "{repo}");
+        assert_eq!(ids.len(), tasks.len(), "{repo}");
+        for task in &tasks {
+            assert!(!task.items.is_empty(), "{repo} {}", task.id);
+            let edit = task.kind == "edit";
+            assert_eq!(task.check.is_some(), edit, "{repo} {}", task.id);
+            assert_eq!(task.signature.is_some(), edit, "{repo} {}", task.id);
+        }
     }
+}
+
+#[test]
+fn an_edit_is_graded_by_the_errors_it_adds_over_the_baseline() {
+    let mut task = task();
+    task.kind = "edit".to_owned();
+    let baseline = "src/a.ts(3,1): error TS2591: Cannot find name 'process'.\n";
+    let after = "src/a.ts(9,1): error TS2591: Cannot find name 'process'.\n\
+                 src/b.ts(4,2): error TS2554: Expected 2 arguments, but got 1.\n";
+    let new = grading::new_errors(baseline, after);
+    assert_eq!(
+        new,
+        ["src/b.ts(4,2): error TS2554: Expected 2 arguments, but got 1."]
+    );
+    let grade = grading::edit_grade(&task, true, &new);
+    assert_eq!((grade.correctness, grade.completeness), (75, 0.5));
+
+    let rust = grading::new_errors(
+        "",
+        "crates/a/src/x.rs:12:5: error[E0061]: this function takes 4 arguments but 3 were supplied\n",
+    );
+    assert_eq!(rust.len(), 1);
+    assert_eq!(grading::edit_grade(&task, true, &[]).correctness, 100);
+    let unchanged = grading::edit_grade(&task, false, &[]);
+    assert_eq!((unchanged.correctness, unchanged.completeness), (0, 0.0));
 }
 
 #[test]
@@ -71,6 +102,8 @@ fn task() -> Task {
         prompt: "Who calls match?".to_owned(),
         expected: "dispatch calls it.".to_owned(),
         items: vec!["dispatch".to_owned(), "SmartRouter".to_owned()],
+        check: None,
+        signature: None,
     }
 }
 

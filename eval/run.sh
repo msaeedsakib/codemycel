@@ -12,7 +12,7 @@
 # eval/logs/<repo>/<task>/<mode>/<run>.jsonl, and the table is printed from them at the end.
 # Runs whose log already holds a result are skipped, so an interrupted eval resumes.
 #
-# Usage: eval/run.sh [hono] [irixmail]
+# Usage: eval/run.sh [repo...] (default: hono irixmail rust-analyzer nest)
 # Needs: git, cargo, jq, a logged-in `claude`, and on PATH (or named by the variable in brackets)
 # `codemycel` [CODEMYCEL], `gitnexus` [GITNEXUS], `serena` [SERENA], `codegraph` [CODEGRAPH] for the
 # modes that run. EVAL_TASKS limits the run to the named task ids. EVAL_MODEL picks the model; with ANTHROPIC_API_KEY set, runs use --bare so no
@@ -28,14 +28,20 @@ read -r -a modes <<<"${EVAL_MODES:-without codemycel gitnexus serena codegraph}"
 declare -A url=(
     [hono]=https://github.com/honojs/hono
     [irixmail]=https://github.com/irixsoft/irixmail
+    [rust-analyzer]=https://github.com/rust-lang/rust-analyzer
+    [nest]=https://github.com/nestjs/nest
 )
 declare -A commit=(
     [hono]=ed1d5f72135ccf7e09c17d64dc4af7588dd3e491
     [irixmail]=cff06ca840b0d1a65e65ddc67d5bfbe7aa181577
+    [rust-analyzer]=c59cdaa4c26ffe036a3403e4948f1681995d4125
+    [nest]=65b4c159129725e849654cd15cfb7ab5a88cae8d
 )
 declare -A serena_languages=(
     [hono]="--language typescript"
     [irixmail]="--language rust --language typescript"
+    [rust-analyzer]="--language rust"
+    [nest]="--language typescript"
 )
 declare -A bin_name=([codemycel]=CODEMYCEL [gitnexus]=GITNEXUS [serena]=SERENA [codegraph]=CODEGRAPH)
 declare -A tool
@@ -48,7 +54,7 @@ done
 
 repos=("$@")
 if [ ${#repos[@]} -eq 0 ]; then
-    repos=(hono irixmail)
+    repos=(hono irixmail rust-analyzer nest)
 fi
 
 cargo build --quiet --release --manifest-path "$root/Cargo.toml" -p codemycel-eval
@@ -62,6 +68,14 @@ clone() {
         git clone --quiet --filter=blob:none "${url[$repo]}" "$dir"
     fi
     git -C "$dir" checkout --quiet --detach "${commit[$repo]}"
+}
+
+# Puts a clone back at its commit after an edit run, keeping the tools' index files.
+reset() {
+    git -C "$1" reset --quiet
+    git -C "$1" checkout --quiet -- .
+    git -C "$1" clean --quiet -fd -e .codemycel -e .gitnexus -e .codegraph -e .serena -e .claude \
+        -e AGENTS.md -e CLAUDE.md
 }
 
 server() {
@@ -119,7 +133,7 @@ done
 
 declare -A prepared
 for repo in "${repos[@]}"; do
-    while IFS=$'\t' read -r task prompt; do
+    while IFS=$'\t' read -r task kind _ _ prompt; do
         if [ -n "${EVAL_TASKS:-}" ] && [[ " $EVAL_TASKS " != *" $task "* ]]; then
             continue
         fi
@@ -135,6 +149,9 @@ for repo in "${repos[@]}"; do
                 prepared[$repo-$mode]=1
             fi
             allowed=(Read Grep Glob)
+            if [ "$kind" = edit ]; then
+                allowed+=(Edit Write)
+            fi
             if [ "$mode" != without ]; then
                 allowed+=("mcp__$mode")
             fi
@@ -163,8 +180,17 @@ for repo in "${repos[@]}"; do
                     continue
                 fi
                 echo "$repo $task $mode run $run"
+                if [ "$kind" = edit ]; then
+                    reset "$dir"
+                fi
                 (cd "$dir" && claude -p "$prompt" "${common[@]}" "${mode_args[@]}" </dev/null >"$log") ||
                     echo "  claude exited $?; the log is kept and the run counts only if it has a result"
+                if [ "$kind" = edit ]; then
+                    git -C "$dir" add --intent-to-add --all -- ':!.codemycel' ':!.gitnexus' \
+                        ':!.codegraph' ':!.serena' ':!.claude' ':!AGENTS.md' ':!CLAUDE.md'
+                    git -C "$dir" diff >"$logs/$run.patch"
+                    reset "$dir"
+                fi
             done
         done
     done < <("$bin/tasks" "$eval_dir/tasks/$repo.toml")

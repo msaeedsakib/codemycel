@@ -90,3 +90,27 @@ items = [
     "the DKIM registry in crates/directory/src/dkim_registry.rs as the key source",
     "the submission or outbound path that signs before enqueueing, such as crates/smtp/src/sub_enqueue.rs",
 ]
+
+[[task]]
+id = "enqueue-edit"
+kind = "edit"
+prompt = """Give `enqueue` in crates/smtp/src/queue_enqueue.rs a new required last parameter \
+`delivery_priority: u8`, and update every call site outside tests (`#[cfg(test)]` modules and \
+tests directories) to pass `0` for it. The function does not need to use the value yet. Do not edit \
+tests and do not change any other function's signature."""
+expected = """The signature gains `delivery_priority: u8` last. The production calls pass `0`: \
+`enqueue_relays`, `enqueue_forward`, `bounce_over_quota` and `respond_vacations` in \
+crates/smtp/src/deliver_hook.rs, `enqueue_submission_at` in crates/smtp/src/sub_enqueue.rs, \
+`raise_bounces` in crates/smtp/src/queue_deliver.rs, and `boot` in crates/irixmail/src/cmd_run.rs. \
+The workspace's production targets compile with no new errors."""
+items = [
+    "`enqueue_relays` in crates/smtp/src/deliver_hook.rs",
+    "`enqueue_forward` in crates/smtp/src/deliver_hook.rs",
+    "`bounce_over_quota` in crates/smtp/src/deliver_hook.rs",
+    "`respond_vacations` in crates/smtp/src/deliver_hook.rs",
+    "`enqueue_submission_at` in crates/smtp/src/sub_enqueue.rs",
+    "`raise_bounces` in crates/smtp/src/queue_deliver.rs",
+    "`boot` in crates/irixmail/src/cmd_run.rs",
+]
+check = "cargo"
+signature = "delivery_priority: u8"
