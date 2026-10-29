@@ -18,9 +18,24 @@ pub const VERIFIED_KINDS: [EdgeKind; 7] = [
 /// Reached nodes listed when there is no path.
 const NEAREST: usize = 10;
 
+/// Edges walked backwards from a parent to the methods and types that override or implement
+/// it, so a path can pass through dynamic dispatch.
+const DISPATCH: [EdgeKind; 2] = [EdgeKind::Overrides, EdgeKind::Implements];
+
+/// How the walk reached a node: along `edge`, or against it when `down` steps from a parent to
+/// an implementation.
+#[derive(Clone)]
+struct Step {
+    edge: StoredEdge,
+    down: bool,
+}
+
 impl QueryEngine<'_> {
     /// The shortest directed path from `from` to `to` over `kinds` edges, at most `max_depth`
-    /// hops, as a chain of outgoing edge lines. Without one, the reached nodes nearest to `to`:
+    /// hops, as a chain of outgoing edge lines. When `kinds` holds `overrides` or `implements`,
+    /// the walk also steps from a trait or interface member down to what overrides or implements
+    /// it, shown as that incoming edge marked `via` the parent, so a call through dynamic dispatch
+    /// reaches the implementations. Without a path, the reached nodes nearest to `to`:
     /// those sharing the longest leading run of path segments with it, then the fewest hops away.
     pub fn trace(
         &self,
@@ -43,18 +58,32 @@ impl QueryEngine<'_> {
         } else {
             kinds
         };
-        let mut reached: BTreeMap<NodeId, (u32, Option<StoredEdge>)> = BTreeMap::new();
+        let dispatch: Vec<EdgeKind> = DISPATCH
+            .into_iter()
+            .filter(|kind| kinds.contains(kind))
+            .collect();
+        let mut reached: BTreeMap<NodeId, (u32, Option<Step>)> = BTreeMap::new();
         reached.insert(start.id, (0, None));
         let mut queue = VecDeque::from([(start.id, 0)]);
         while let Some((id, hops)) = queue.pop_front() {
             if id == goal.id || hops == max_depth {
                 continue;
             }
-            for edge in self.store().edges_from(id, kinds)? {
-                let dst = edge.dst_id;
-                if let std::collections::btree_map::Entry::Vacant(slot) = reached.entry(dst) {
-                    slot.insert((hops + 1, Some(edge)));
-                    queue.push_back((dst, hops + 1));
+            let forward = self.store().edges_from(id, kinds)?.into_iter().map(|edge| {
+                let next = edge.dst_id;
+                (next, Step { edge, down: false })
+            });
+            let down = if dispatch.is_empty() {
+                Vec::new()
+            } else {
+                self.store().edges_to(id, &dispatch)?
+            }
+            .into_iter()
+            .map(|edge| (edge.src_id, Step { edge, down: true }));
+            for (next, step) in forward.chain(down) {
+                if let std::collections::btree_map::Entry::Vacant(slot) = reached.entry(next) {
+                    slot.insert((hops + 1, Some(step)));
+                    queue.push_back((next, hops + 1));
                 }
             }
             if reached.contains_key(&goal.id) {
@@ -64,14 +93,24 @@ impl QueryEngine<'_> {
         if reached.contains_key(&goal.id) {
             let mut chain = Vec::new();
             let mut at = goal.id;
-            while let Some((_, Some(edge))) = reached.get(&at) {
-                chain.push(edge.clone());
-                at = edge.src_id;
+            while let Some((_, Some(step))) = reached.get(&at) {
+                chain.push(step.clone());
+                at = if step.down {
+                    step.edge.dst_id
+                } else {
+                    step.edge.src_id
+                };
             }
             chain.reverse();
             let mut lines = vec![Line::Node(NodeLine::of(&start))];
-            for edge in &chain {
-                lines.push(Line::Edge(self.edge_line(edge, Direction::Out, None)?));
+            for step in &chain {
+                let line = if step.down {
+                    let parent = step.edge.edge.dst.path.clone();
+                    self.edge_line(&step.edge, Direction::In, Some(parent))?
+                } else {
+                    self.edge_line(&step.edge, Direction::Out, None)?
+                };
+                lines.push(Line::Edge(line));
             }
             let section = Section::new("path", 0, lines);
             return self.finish(Outcome::Ok, vec![section], budget, "raise max_tokens");

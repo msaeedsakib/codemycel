@@ -446,6 +446,48 @@ fn impact_reports_possible_additional_dependents() {
 }
 
 #[test]
+fn trace_steps_down_through_dynamic_dispatch() {
+    let Some(found) = on_fixture(|engine| {
+        engine
+            .trace(
+                "crates/core/src/lib.rs::total_area",
+                "crates/core/src/geometry.rs::<Circle as Area>::area",
+                &[],
+                8,
+                Budget::new(2000),
+            )
+            .unwrap()
+    }) else {
+        return;
+    };
+    assert_eq!(
+        found,
+        "path:
+  crates/core/src/lib.rs::total_area (function) crates/core/src/lib.rs:16  pub fn total_area(shapes: &[Box<dyn Area>]) -> f64
+  → calls  crates/core/src/geometry.rs::Area::area (method) L23 [L17]
+  ← overrides  crates/core/src/geometry.rs::<Circle as Area>::area (method) L45 via crates/core/src/geometry.rs::Area::area
+index: no git (0 files changed since) · coverage: rust lsp ✓
+"
+    );
+    let calls_only = on_fixture(|engine| {
+        engine
+            .trace(
+                "crates/core/src/lib.rs::total_area",
+                "crates/core/src/geometry.rs::<Circle as Area>::area",
+                &[EdgeKind::Calls],
+                8,
+                Budget::new(2000),
+            )
+            .unwrap()
+    })
+    .unwrap();
+    assert!(
+        calls_only.starts_with("no path within depth 8\n"),
+        "{calls_only}"
+    );
+}
+
+#[test]
 fn trace_finds_shortest_path_and_reports_nearest_when_none() {
     let Some(found) = on_fixture(|engine| {
         engine
