@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use codemycel_core::config::Config;
 use codemycel_core::config::paths::notes_dir;
 use codemycel_core::query::symbol::SymbolOptions;
-use codemycel_core::query::{Answer, Budget, Outcome, QueryEngine, TextFormatter};
+use codemycel_core::query::{Answer, Budget, JsonFormatter, Outcome, QueryEngine, TextFormatter};
 use codemycel_core::store::{Store, StoreRead};
 use codemycel_core::{
     Edge, EdgeKind, LabelSource, NodeKind, NodeRef, Note, NoteId, NoteKind, Occurrence, VerifiedBy,
@@ -68,7 +68,7 @@ fn note_write_creates_file_and_card_entry() {
     assert_eq!(
         TextFormatter::render(&answer).replace(&uuid, "<uuid>"),
         "uuid  <uuid>
-target  crates/core/src/geometry.rs::sides (function)
+crates/core/src/geometry.rs::sides (function) crates/core/src/geometry.rs:54  pub fn sides(shape: &Shape) -> u32
 index: no git (0 files changed since) · coverage: rust not verified
 "
     );
@@ -208,6 +208,29 @@ fn label_note_relabels_its_community_before_any_sync() {
         overview_head(&repo, &scope),
         format!("community  derived:shapes ({scope})")
     );
+}
+
+#[test]
+fn note_on_a_community_is_marked_derived() {
+    let (_temp, repo) = indexed();
+    let id = community_of_sides_and_config(&repo);
+    let scope = format!("community:{id}");
+    let answer = note(&repo, &scope, "Mostly shapes.", None);
+
+    let text = TextFormatter::render(&answer);
+    assert!(
+        text.contains(&format!("\nderived:{scope} (community)\n")),
+        "{text}"
+    );
+    let json = JsonFormatter::render(&answer);
+    let target = json["note"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|line| line["type"] == "node")
+        .unwrap_or_else(|| panic!("{json}"));
+    assert_eq!(target["path"], scope);
+    assert_eq!(target["derived"], true);
 }
 
 #[test]
