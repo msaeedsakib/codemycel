@@ -419,6 +419,138 @@ fn semantic_path_lookup_is_exact() {
     assert_eq!(one("storage"), None, "communities are not bare names");
 }
 
+/// TS classes `Router`, `Job` twice, and `Hono extends HonoBase`; a Rust trait `Store` with
+/// `RocksdbStore` and generic `MemStore<K>` impls.
+fn qualified() -> Repo {
+    let repo = Repo {
+        dir: tempfile::tempdir().unwrap(),
+    };
+    std::fs::create_dir_all(repo.root().join(".codemycel")).unwrap();
+    let mut store = Store::create(&repo.db()).unwrap();
+    store
+        .transaction(|tx| {
+            tx.set_root(&Root {
+                path: repo_path(""),
+                language: Language::Rust,
+            })
+            .unwrap();
+            for path in [
+                "src/router.ts",
+                "src/a.ts",
+                "src/b.ts",
+                "src/hono.ts",
+                "src/hono-base.ts",
+                "store/traits.rs",
+                "store/rocksdb.rs",
+                "store/mem.rs",
+            ] {
+                file(tx, &repo, path, "x\n");
+            }
+            let nodes: Vec<Node> = [
+                ("src/router.ts::Router", NodeKind::Class),
+                ("src/router.ts::Router::match", NodeKind::Method),
+                ("src/a.ts::Job::run", NodeKind::Method),
+                ("src/b.ts::Job::run", NodeKind::Method),
+                ("src/hono.ts::Hono", NodeKind::Class),
+                ("src/hono-base.ts::HonoBase", NodeKind::Class),
+                ("src/hono-base.ts::HonoBase::fetch", NodeKind::Method),
+                ("store/traits.rs::Store", NodeKind::Trait),
+                ("store/traits.rs::Store::put", NodeKind::Method),
+                (
+                    "store/rocksdb.rs::<RocksdbStore as Store>::put",
+                    NodeKind::Method,
+                ),
+                (
+                    "store/mem.rs::<MemStore<K> as Store>::put",
+                    NodeKind::Method,
+                ),
+            ]
+            .into_iter()
+            .map(|(path, kind)| node(path, kind, (1, 2)))
+            .collect();
+            tx.insert_nodes(&nodes).unwrap();
+            tx.insert_edges(&[Edge {
+                src: node_ref("src/hono.ts::Hono", NodeKind::Class),
+                dst: node_ref("src/hono-base.ts::HonoBase", NodeKind::Class),
+                kind: EdgeKind::Extends,
+                verified_by: VerifiedBy::Lsp,
+                occurrences: vec![Occurrence { line: 1, col: 1 }],
+            }])
+            .unwrap();
+            Ok::<_, codemycel_core::store::StoreError>(())
+        })
+        .unwrap();
+    repo
+}
+
+fn resolved_paths(store: &Store, name: &str) -> Vec<String> {
+    match Lookup::resolve(store, name).unwrap() {
+        Resolved::One(node) => vec![node.node.path.to_string()],
+        Resolved::Many(nodes) => nodes.iter().map(|n| n.node.path.to_string()).collect(),
+        Resolved::None => Vec::new(),
+    }
+}
+
+#[test]
+fn ts_class_dot_method_resolves() {
+    let repo = qualified();
+    let store = Store::open(&repo.db(), true).unwrap();
+    assert_eq!(
+        resolved_paths(&store, "Router.match"),
+        ["src/router.ts::Router::match"]
+    );
+    assert_eq!(
+        resolved_paths(&store, "Router.match (method)"),
+        ["src/router.ts::Router::match"]
+    );
+    assert!(resolved_paths(&store, "Router.match (function)").is_empty());
+    assert!(resolved_paths(&store, "Router.missing").is_empty());
+}
+
+#[test]
+fn rust_type_dot_method_resolves_through_trait_impl() {
+    let repo = qualified();
+    let store = Store::open(&repo.db(), true).unwrap();
+    assert_eq!(
+        resolved_paths(&store, "RocksdbStore.put"),
+        ["store/rocksdb.rs::<RocksdbStore as Store>::put"]
+    );
+    assert_eq!(
+        resolved_paths(&store, "MemStore::put"),
+        ["store/mem.rs::<MemStore<K> as Store>::put"]
+    );
+}
+
+#[test]
+fn trait_qualified_method_prefers_the_trait_own_method() {
+    let repo = qualified();
+    let store = Store::open(&repo.db(), true).unwrap();
+    assert_eq!(
+        resolved_paths(&store, "Store::put"),
+        ["store/traits.rs::Store::put"]
+    );
+}
+
+#[test]
+fn qualified_name_falls_back_to_extended_class() {
+    let repo = qualified();
+    let store = Store::open(&repo.db(), true).unwrap();
+    assert_eq!(
+        resolved_paths(&store, "Hono.fetch"),
+        ["src/hono-base.ts::HonoBase::fetch"]
+    );
+}
+
+#[test]
+fn ambiguous_qualified_name_returns_every_match() {
+    let repo = qualified();
+    let store = Store::open(&repo.db(), true).unwrap();
+    assert!(matches!(
+        Lookup::resolve(&store, "Job.run").unwrap(),
+        Resolved::Many(nodes) if nodes.len() == 2
+    ));
+}
+
 #[test]
 fn json_and_text_carry_same_data() {
     let repo = seeded();
