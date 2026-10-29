@@ -90,8 +90,7 @@ fn host_triple() -> String {
         .to_owned()
 }
 
-/// Every chain `member -> … -> client` through normal or build dependencies that does not pass
-/// through one of `CLIENT_CRATES`.
+/// Every chain `member -> … -> client` through normal or build dependencies outside allowed routes.
 fn client_dependency_chains() -> Vec<String> {
     let output = cargo()
         .args(["metadata", "--format-version", "1", "--all-features"])
@@ -140,9 +139,6 @@ fn client_dependency_chains() -> Vec<String> {
 
     let mut chains = Vec::new();
     for &member in &members {
-        if allowed(member) {
-            continue;
-        }
         let mut parent: HashMap<&str, &str> = HashMap::new();
         let mut queue = VecDeque::from([member]);
         while let Some(id) = queue.pop_front() {
@@ -153,7 +149,12 @@ fn client_dependency_chains() -> Vec<String> {
                     .unwrap()
                     .iter()
                     .any(|kind| kind["kind"].as_str() != Some("dev"));
-                if !runtime || allowed(dep_id) || dep_id == member || parent.contains_key(dep_id) {
+                if !runtime
+                    || allowed(dep_id)
+                    || dep_id == member
+                    || (allowed(member) && id == member && names[dep_id] == "ureq")
+                    || parent.contains_key(dep_id)
+                {
                     continue;
                 }
                 parent.insert(dep_id, id);
