@@ -11,7 +11,7 @@ use codemycel_core::query::{Answer, QueryEngine};
 use codemycel_core::query::{Budget, JsonFormatter};
 use codemycel_core::store::{Store, meta};
 use codemycel_index::{Lock, LockKind, Pipeline, Registry};
-use codemycel_ui::UiServer;
+use codemycel_ui::{DEFAULT_PORT, UiServer};
 use serde_json::Value;
 use tempfile::TempDir;
 use tower::ServiceExt;
@@ -54,8 +54,13 @@ fn stamp(repo: &Path, indexed_at: &str) {
 }
 
 async fn get(repo: &Path, uri: &str) -> (StatusCode, Value) {
-    let response = UiServer::router(repo)
-        .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+    let response = UiServer::router(repo, DEFAULT_PORT)
+        .oneshot(
+            Request::get(uri)
+                .header("host", format!("127.0.0.1:{DEFAULT_PORT}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
     let status = response.status();
@@ -172,4 +177,70 @@ async fn api_without_an_index_says_no_index() {
     let (status, body) = get(repo.path(), "/api/status").await;
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(body["outcome"], "no_index");
+}
+
+#[tokio::test]
+async fn ui_rejects_foreign_host() {
+    let repo = tempfile::tempdir().unwrap();
+    let port = 7111;
+    let foreign = UiServer::router(repo.path(), port)
+        .oneshot(
+            Request::get("/api/status")
+                .header("host", format!("attacker.example:{port}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(foreign.status(), StatusCode::FORBIDDEN);
+
+    let foreign_bundle = UiServer::router(repo.path(), port)
+        .oneshot(
+            Request::get("/index.html")
+                .header("host", format!("attacker.example:{port}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(foreign_bundle.status(), StatusCode::FORBIDDEN);
+
+    let missing = UiServer::router(repo.path(), port)
+        .oneshot(Request::get("/api/status").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), StatusCode::FORBIDDEN);
+
+    let loopback_ipv4 = UiServer::router(repo.path(), port)
+        .oneshot(
+            Request::get("/api/status")
+                .header("host", format!("127.0.0.1:{port}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(loopback_ipv4.status(), StatusCode::FORBIDDEN);
+
+    let loopback_name = UiServer::router(repo.path(), port)
+        .oneshot(
+            Request::get("/api/status")
+                .header("host", format!("localhost:{port}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(loopback_name.status(), StatusCode::FORBIDDEN);
+
+    let loopback_ipv6 = UiServer::router(repo.path(), port)
+        .oneshot(
+            Request::get("/api/status")
+                .header("host", format!("[::1]:{port}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_ne!(loopback_ipv6.status(), StatusCode::FORBIDDEN);
 }

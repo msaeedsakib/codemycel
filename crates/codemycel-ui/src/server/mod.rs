@@ -5,6 +5,10 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 
 use axum::Router;
+use axum::extract::{Request, State};
+use axum::http::StatusCode;
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 
 use crate::api;
 
@@ -15,6 +19,33 @@ pub const DEFAULT_PORT: u16 = 7111;
 pub struct UiServer {
     listener: TcpListener,
     repo_root: PathBuf,
+}
+
+fn is_loopback_host(host: &str, port: u16) -> bool {
+    let port_str = port.to_string();
+    if let Some((name, host_port)) = host.rsplit_once(':') {
+        if host_port == port_str {
+            return name.eq_ignore_ascii_case("127.0.0.1")
+                || name.eq_ignore_ascii_case("localhost")
+                || name.eq_ignore_ascii_case("[::1]");
+        }
+    } else if port == 80 {
+        return host.eq_ignore_ascii_case("127.0.0.1")
+            || host.eq_ignore_ascii_case("localhost")
+            || host.eq_ignore_ascii_case("[::1]");
+    }
+    false
+}
+
+async fn check_host(State(port): State<u16>, request: Request, next: Next) -> Response {
+    let host = request
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|value| value.to_str().ok());
+    match host {
+        Some(host) if is_loopback_host(host, port) => next.run(request).await,
+        _ => StatusCode::FORBIDDEN.into_response(),
+    }
 }
 
 impl UiServer {
@@ -60,7 +91,8 @@ impl UiServer {
     /// Serves until the process ends.
     pub fn serve(self) -> io::Result<()> {
         self.listener.set_nonblocking(true)?;
-        let app = Self::router(&self.repo_root);
+        let port = self.listener.local_addr()?.port();
+        let app = Self::router(&self.repo_root, port);
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()?
@@ -70,9 +102,10 @@ impl UiServer {
             })
     }
 
-    pub fn router(repo_root: &Path) -> Router {
+    pub fn router(repo_root: &Path, port: u16) -> Router {
         Router::new()
             .nest("/api", api::routes(repo_root))
             .fallback(embed::asset)
+            .layer(middleware::from_fn_with_state(port, check_host))
     }
 }
