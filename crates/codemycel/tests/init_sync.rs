@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use assert_cmd::cargo::cargo_bin_cmd;
+use codemycel_core::UnresolvedReason;
 use codemycel_core::config::TEMPLATE;
 use codemycel_core::store::{Store, StoreRead};
 use predicates::prelude::*;
@@ -123,6 +124,63 @@ fn init_summary_lists_counts_and_coverage() {
                 .and(predicate::str::contains("\ndatabase ")),
         )
         .stderr(predicate::str::contains("lsp . (rust): rust-analyzer"));
+}
+
+#[test]
+fn a_missing_pinned_toolchain_degrades_the_root() {
+    let available = Command::new("rustup")
+        .args(["which", "rust-analyzer"])
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !available {
+        assert!(
+            std::env::var_os("CODEMYCEL_REQUIRE_SERVERS").is_none_or(|v| v != "1"),
+            "rust-analyzer is required"
+        );
+        eprintln!("skipping: no rust-analyzer");
+        return;
+    }
+    let sandbox = tiny_crate();
+    write(
+        &sandbox.repo.join("rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"1.60.0\"\n",
+    );
+    std::fs::create_dir_all(&sandbox.home).unwrap();
+    let run = |args: &[&str]| {
+        cargo_bin_cmd!("codemycel")
+            .args(args)
+            .arg("--repo")
+            .arg(&sandbox.repo)
+            .current_dir(&sandbox.home)
+            .env("CODEMYCEL_HOME", &sandbox.home)
+            .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
+            .env("RUSTUP_AUTO_INSTALL", "0")
+            .env_remove("RUSTUP_TOOLCHAIN")
+            .assert()
+    };
+
+    run(&["init", "--no-download"]).code(2).stdout(
+        predicate::str::contains("root . (rust): degraded: toolchain_missing")
+            .and(predicate::str::contains("verified by lsp").not()),
+    );
+    run(&["doctor"]).code(2).stdout(
+        predicate::str::contains("rustup toolchain install")
+            .and(predicate::str::contains("toolchain '1.60.0")),
+    );
+
+    let counts = sandbox.store().unresolved_counts_by_root(None).unwrap();
+    assert!(
+        counts
+            .iter()
+            .any(|(_, reason, _)| *reason == UnresolvedReason::ServerUnavailable),
+        "{counts:?}"
+    );
+    assert!(
+        counts
+            .iter()
+            .all(|(_, reason, _)| *reason != UnresolvedReason::NoDefinition),
+        "{counts:?}"
+    );
 }
 
 #[test]

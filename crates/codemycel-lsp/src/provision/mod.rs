@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
 
 use codemycel_core::config::{Config, ServerConfig};
 use codemycel_core::{Arch, Language, Os, ServerAdapter, ServerSource};
@@ -93,12 +94,55 @@ impl Provisioner {
         &self.home
     }
 
-    /// Whether the program a language's roots need (its toolchain prerequisite) is runnable.
-    /// True for a server without a toolchain.
+    /// Whether the program a language's roots need (its toolchain prerequisite) is runnable
+    /// outside any directory that pins a toolchain. True for a server without a toolchain.
     pub fn prerequisite_present(&self, adapter: &dyn ServerAdapter) -> bool {
         adapter.toolchain().is_none_or(|toolchain| {
-            lookup::run_tool(&[toolchain.prerequisite, "--version"], self.search_path()).is_some()
+            self.run_prerequisite(toolchain.prerequisite, &std::env::temp_dir())
+                .is_some_and(|output| output.status.success())
         })
+    }
+
+    /// What the toolchain prerequisite prints when it fails to run in `dir`, typically because
+    /// the directory pins a toolchain that is not installed. `None` when it runs there, or when
+    /// the language has no toolchain or the prerequisite is absent.
+    pub fn toolchain_missing(&self, adapter: &dyn ServerAdapter, dir: &Path) -> Option<String> {
+        let toolchain = adapter.toolchain()?;
+        let output = self.run_prerequisite(toolchain.prerequisite, dir)?;
+        if output.status.success() {
+            return None;
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let message = stderr
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(|line| line.trim_start_matches("error: ").to_owned());
+        Some(message.unwrap_or_else(|| {
+            format!(
+                "{} --version fails in {}",
+                toolchain.prerequisite,
+                dir.display()
+            )
+        }))
+    }
+
+    /// `<prerequisite> --version` in `dir`, never letting rustup install the toolchain the
+    /// directory pins. `None` when the program is absent or does not start.
+    fn run_prerequisite(&self, prerequisite: &str, dir: &Path) -> Option<Output> {
+        let program = lookup::find_on_path(prerequisite, self.search_path())?;
+        let mut command = Command::new(program);
+        command
+            .arg("--version")
+            .current_dir(dir)
+            .env("RUSTUP_AUTO_INSTALL", "0")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        if let Some(path) = self.search_path() {
+            command.env("PATH", path);
+        }
+        command.output().ok()
     }
 
     pub fn locate(&self, adapter: &dyn ServerAdapter) -> Result<Located, NoServer> {
