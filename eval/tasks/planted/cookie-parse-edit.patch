@@ -1,0 +1,13 @@
+diff --git a/src/utils/cookie.ts b/src/utils/cookie.ts
+index 772670b1..bc2152f6 100644
+--- a/src/utils/cookie.ts
++++ b/src/utils/cookie.ts
+@@ -106,7 +106,7 @@ const trimCookieWhitespace = (value: string): string => {
+   return start === 0 && end === value.length ? value : value.slice(start, end)
+ }
+ 
+-export const parse = (cookie: string, name?: string): Cookie => {
++export const parse = (strict: boolean, cookie: string, name?: string): Cookie => {
+   if (name && cookie.indexOf(name) === -1) {
+     // Fast-path: return immediately if the demanded-key is not in the cookie string
+     return {}

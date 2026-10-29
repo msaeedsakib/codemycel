@@ -4,7 +4,7 @@ use anyhow::{Context as _, bail};
 
 const USAGE: &str = "usage: grade schema | grade prompt <tasks.toml> <task-logs> | \
                      grade store <tasks.toml> <task-logs> <grader-log> | \
-                     grade edit <tasks.toml> <task-logs> <log> <baseline-errors> <errors> <0|1>";
+                     grade edit <tasks.toml> <task-logs> <log> <baseline-errors> <errors> <edited-tree>";
 
 /// The steps of `grade.sh` and `check.sh`: print the grader's output schema, print a task's blind
 /// grading prompt, store a grader log's verdicts beside the graded runs, or grade an edit run from
@@ -37,14 +37,19 @@ fn main() -> anyhow::Result<()> {
                 codemycel_eval::grading::store(task_logs.as_ref(), &task(tasks, task_logs)?, &log)?;
             println!("stored {stored} grades");
         }
-        ["edit", tasks, task_logs, log, baseline, after, signature] => {
+        ["edit", tasks, task_logs, log, baseline, after, edited_tree] => {
             let new = codemycel_eval::grading::new_errors(
                 &std::fs::read_to_string(baseline)?,
                 &std::fs::read_to_string(after)?,
             );
+            let patch = std::fs::read_to_string(PathBuf::from(log).with_extension("patch"))
+                .unwrap_or_default();
+            let edited =
+                |file: &str| std::fs::read_to_string(PathBuf::from(edited_tree).join(file)).ok();
             let grade = codemycel_eval::grading::edit_grade(
                 &task(tasks, task_logs)?,
-                signature == "1",
+                &patch,
+                &edited,
                 &new,
             );
             std::fs::write(

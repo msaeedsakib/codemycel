@@ -1,6 +1,8 @@
-//! Blind grading: every ungraded answer to a task goes to one grader session under a neutral
-//! number, in an order that does not follow the mode, and the verdicts are stored per run.
+//! Grading. Answers to questions are graded blind: every ungraded answer to a task goes to one
+//! grader session under a neutral number, in an order that does not follow the mode. Edit runs are
+//! graded from their patch and the checker's errors, with no model.
 
+use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 
@@ -116,7 +118,10 @@ pub fn prompt(task_logs: &Path, task: &Task) -> anyhow::Result<Option<String>> {
          caller, or a missed implementation stated as the full list are serious; a slightly \
          wrong line number is minor. List each false claim in `wrong_claims`, quoting it and \
          saying what the code shows. Every point deducted belongs to a listed claim: an answer \
-         with no false claim scores 100.\n\n\
+         with no false claim scores 100. A claim is false only when you can cite code that \
+         contradicts it (file and line). Not finding something with a text search is not proof: \
+         calls through trait objects, interfaces, re-exports, aliases or macros are easy to miss, \
+         so follow the types before deciding a named caller or implementation does not exist.\n\n\
          Completeness: list in `items_named` the numbers of the checklist items the answer \
          names. An item counts only if the answer states it correctly.\n\n\
          Ignore style, length, formatting and any mention of tools, indexes or freshness.\n\n\
@@ -216,10 +221,133 @@ fn error_key(line: &str) -> Option<String> {
     Some(format!("{file}{}", &line[at..]))
 }
 
-/// The grade of an edit run: nothing counts unless the definition was changed as asked; then each
-/// error the edit introduced is a call site it missed or broke.
-pub fn edit_grade(task: &Task, signature_changed: bool, new_errors: &[String]) -> Grade {
-    let sites = task.items.len().max(1);
+/// `src/a.ts(39,23): error …` or `src/a.rs:39:23: error …` as its file and line.
+fn error_location(line: &str) -> Option<(&str, u32)> {
+    let location = &line[..line.find(": error")?];
+    if let Some((file, rest)) = location.split_once('(') {
+        return Some((file, rest.split(',').next()?.parse().ok()?));
+    }
+    let mut parts = location.split(':');
+    Some((parts.next()?, parts.next()?.parse().ok()?))
+}
+
+/// Text an edit must not add: it silences the checker instead of fixing the code.
+const EVASIONS: [&str; 10] = [
+    "as any",
+    "@ts-ignore",
+    "@ts-expect-error",
+    "@ts-nocheck",
+    "eslint-disable",
+    "todo!(",
+    "unimplemented!(",
+    "unreachable!(",
+    "#[allow(",
+    "#![allow(",
+];
+
+#[derive(Default)]
+struct Hunk {
+    old_start: u32,
+    old_len: u32,
+    new_start: u32,
+    /// Old line numbers the hunk removes.
+    removed: Vec<(u32, String)>,
+    /// Added lines with the old line they are inserted before.
+    added: Vec<(u32, String)>,
+}
+
+/// The hunks of a unified diff, by the file they change.
+fn hunks(patch: &str) -> BTreeMap<String, Vec<Hunk>> {
+    let mut files: BTreeMap<String, Vec<Hunk>> = BTreeMap::new();
+    let mut file = None;
+    let mut old = 0u32;
+    for line in patch.lines() {
+        if let Some(path) = line.strip_prefix("+++ b/") {
+            file = Some(path.to_owned());
+        } else if line == "+++ /dev/null" {
+            file = None;
+        } else if line.starts_with("--- a/") || line == "--- /dev/null" || line.starts_with("diff ")
+        {
+        } else if let Some(header) = line.strip_prefix("@@ -") {
+            let numbers = |text: &str| -> (u32, u32) {
+                let mut parts = text.split(',');
+                let start = parts.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+                (
+                    start,
+                    parts.next().and_then(|s| s.parse().ok()).unwrap_or(1),
+                )
+            };
+            let mut ranges = header.split(' ');
+            let (old_start, old_len) = numbers(ranges.next().unwrap_or("0"));
+            let (new_start, _) = numbers(ranges.next().unwrap_or("+0").trim_start_matches('+'));
+            old = old_start;
+            if let Some(file) = &file {
+                files.entry(file.clone()).or_default().push(Hunk {
+                    old_start,
+                    old_len,
+                    new_start,
+                    ..Hunk::default()
+                });
+            }
+        } else if let Some(hunk) = file
+            .as_ref()
+            .and_then(|file| files.get_mut(file))
+            .and_then(|hunks| hunks.last_mut())
+        {
+            match line.chars().next() {
+                Some('-') => {
+                    hunk.removed.push((old, line[1..].to_owned()));
+                    old += 1;
+                }
+                Some('+') => hunk.added.push((old, line[1..].to_owned())),
+                _ => old += 1,
+            }
+        }
+    }
+    files
+}
+
+/// The line of the untouched file that line `new` of the edited file stands for.
+fn old_line(hunks: &[Hunk], new: u32) -> u32 {
+    let mut shift: i64 = 0;
+    for hunk in hunks {
+        let new_len = hunk.old_len as i64 - hunk.removed.len() as i64 + hunk.added.len() as i64;
+        if i64::from(new) < i64::from(hunk.new_start) {
+            break;
+        }
+        if i64::from(new) < i64::from(hunk.new_start) + new_len {
+            let inside = (new - hunk.new_start).min(hunk.old_len.saturating_sub(1));
+            return hunk.old_start + inside;
+        }
+        shift = i64::from(hunk.new_start) + new_len
+            - i64::from(hunk.old_start)
+            - i64::from(hunk.old_len);
+    }
+    (i64::from(new) - shift).max(1) as u32
+}
+
+fn squeeze(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The grade of an edit run from its patch, the edited files' text, and the errors the checker
+/// reports beyond the untouched tree's. Nothing counts unless the definition reads as the task asks
+/// (whitespace aside). A call site is updated when the patch changes it and no new error lands on
+/// it. New errors, text that silences the checker, and calls to the target the patch deletes are
+/// each a wrong claim.
+pub fn edit_grade(
+    task: &Task,
+    patch: &str,
+    edited: &dyn Fn(&str) -> Option<String>,
+    new_errors: &[String],
+) -> Grade {
+    let files = hunks(patch);
+    let signature = squeeze(task.signature.as_deref().unwrap_or_default());
+    let signature_changed = !signature.is_empty()
+        && files
+            .keys()
+            .filter_map(|file| edited(file))
+            .any(|text| squeeze(&text).contains(&signature));
     if !signature_changed {
         return Grade {
             correctness: 0,
@@ -228,11 +356,93 @@ pub fn edit_grade(task: &Task, signature_changed: bool, new_errors: &[String]) -
             missing: task.items.clone(),
         };
     }
-    let missed = new_errors.len().min(sites);
+
+    let mut wrong: Vec<String> = new_errors.to_vec();
+    let callee = task.callee.as_deref().map(|name| format!("{name}("));
+    for (file, file_hunks) in &files {
+        for hunk in file_hunks {
+            for (_, line) in &hunk.added {
+                if let Some(evasion) = EVASIONS.iter().find(|e| line.contains(*e)) {
+                    wrong.push(format!("{file}: adds `{evasion}`: {}", line.trim()));
+                }
+            }
+            if let Some(callee) = &callee {
+                let calls = |lines: &[(u32, String)]| {
+                    lines
+                        .iter()
+                        .filter(|(_, l)| l.contains(callee.as_str()))
+                        .count()
+                };
+                if calls(&hunk.removed) > calls(&hunk.added) {
+                    wrong.push(format!(
+                        "{file}: deletes a call to `{callee}` near line {}",
+                        hunk.old_start
+                    ));
+                }
+            }
+        }
+    }
+
+    let sites: Vec<(&str, u32)> = task
+        .sites
+        .iter()
+        .flatten()
+        .filter_map(|site| {
+            let (file, line) = site.rsplit_once(':')?;
+            Some((file, line.parse().ok()?))
+        })
+        .collect();
+    let window = |at: usize| -> (u32, u32) {
+        let (file, line) = sites[at];
+        let end = sites
+            .iter()
+            .filter(|(f, l)| *f == file && *l > line)
+            .map(|(_, l)| *l)
+            .min()
+            .unwrap_or(line + 12);
+        (line, end)
+    };
+    let error_lines: Vec<(&str, u32)> = new_errors
+        .iter()
+        .filter_map(|error| {
+            let (file, new) = error_location(error)?;
+            Some((
+                file,
+                files.get(file).map_or(new, |hunks| old_line(hunks, new)),
+            ))
+        })
+        .collect();
+    let mut missing = Vec::new();
+    for (at, (file, _)) in sites.iter().enumerate() {
+        let (start, end) = window(at);
+        let inside = |line: u32| start <= line && line < end;
+        let touched = files.get(*file).is_some_and(|hunks| {
+            hunks.iter().any(|hunk| {
+                hunk.removed.iter().any(|(l, _)| inside(*l))
+                    || hunk.added.iter().any(|(l, _)| inside(*l))
+            })
+        });
+        let broken = error_lines.iter().any(|(f, l)| f == file && inside(*l));
+        if !touched || broken {
+            missing.push(task.items.get(at).cloned().unwrap_or_else(|| {
+                task.sites
+                    .iter()
+                    .flatten()
+                    .nth(at)
+                    .cloned()
+                    .unwrap_or_default()
+            }));
+        }
+    }
+    let updated = sites.len() - missing.len();
     Grade {
-        correctness: 100u32.saturating_sub(25 * new_errors.len() as u32),
-        wrong_claims: new_errors.to_vec(),
-        completeness: (sites - missed) as f64 / sites as f64,
-        missing: Vec::new(),
+        correctness: 100u32.saturating_sub(25 * wrong.len() as u32),
+        wrong_claims: wrong,
+        completeness: if sites.is_empty() {
+            0.0
+        } else {
+            updated as f64 / sites.len() as f64
+        },
+        missing,
     }
 }

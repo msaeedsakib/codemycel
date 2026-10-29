@@ -112,5 +112,15 @@ items = [
     "`raise_bounces` in crates/smtp/src/queue_deliver.rs",
     "`boot` in crates/irixmail/src/cmd_run.rs",
 ]
+sites = [
+    "crates/smtp/src/deliver_hook.rs:56",
+    "crates/smtp/src/deliver_hook.rs:85",
+    "crates/smtp/src/deliver_hook.rs:144",
+    "crates/smtp/src/deliver_hook.rs:200",
+    "crates/smtp/src/sub_enqueue.rs:46",
+    "crates/smtp/src/queue_deliver.rs:243",
+    "crates/irixmail/src/cmd_run.rs:196",
+]
+callee = "enqueue"
 check = "cargo"
 signature = "delivery_priority: u8"

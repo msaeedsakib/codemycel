@@ -186,8 +186,13 @@ for repo in "${repos[@]}"; do
                 (cd "$dir" && claude -p "$prompt" "${common[@]}" "${mode_args[@]}" </dev/null >"$log") ||
                     echo "  claude exited $?; the log is kept and the run counts only if it has a result"
                 if [ "$kind" = edit ]; then
-                    git -C "$dir" add --intent-to-add --all -- ':!.codemycel' ':!.gitnexus' \
-                        ':!.codegraph' ':!.serena' ':!.claude' ':!AGENTS.md' ':!CLAUDE.md'
+                    tool_files=()
+                    for path in .codemycel .gitnexus .codegraph .serena .claude AGENTS.md CLAUDE.md; do
+                        if [ -e "$dir/$path" ] && ! git -C "$dir" check-ignore -q "$path"; then
+                            tool_files+=(":!$path")
+                        fi
+                    done
+                    git -C "$dir" add --intent-to-add --all -- . "${tool_files[@]}"
                     git -C "$dir" diff >"$logs/$run.patch"
                     reset "$dir"
                 fi

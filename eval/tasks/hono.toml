@@ -126,5 +126,7 @@ items = [
     "the call with a key in `getCookie` in src/helper/cookie/index.ts",
     "the call without a key in `getCookie` in src/helper/cookie/index.ts",
 ]
+sites = ["src/utils/cookie.ts:154", "src/helper/cookie/index.ts:39", "src/helper/cookie/index.ts:45"]
+callee = "parse"
 check = "typescript"
 signature = "parse = (strict: boolean, cookie: string, name?: string)"

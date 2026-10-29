@@ -1,0 +1,12 @@
+diff --git a/crates/smtp/src/queue_enqueue.rs b/crates/smtp/src/queue_enqueue.rs
+index 3d85759..fd1f69e 100755
+--- a/crates/smtp/src/queue_enqueue.rs
++++ b/crates/smtp/src/queue_enqueue.rs
+@@ -24,6 +24,7 @@ pub fn enqueue(
+     blobs: &dyn BlobStore,
+     raw: &[u8],
+     request: &Enqueue<'_>,
++    delivery_priority: u8,
+ ) -> Result<Enqueued> {
+     // Body to the blob store first so the queue record never points at a missing blob.
+     let hash = blobs.put(raw)?;

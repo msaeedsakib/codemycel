@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Grades the edit tasks. Each edit run's patch (<run>.patch, saved by run.sh) is applied to a clean
 # check clone of the repository, the task's checker runs, and the errors it reports beyond those of
-# the untouched tree decide the grade: the definition must read as the task asks, and each new error
-# is a call site the edit missed or broke. The grade lands beside the run as <run>.grade.json. No
-# model is involved.
+# the untouched tree decide the grade: the definition must read as the task asks, a call site counts
+# as updated when the patch changes it and no new error lands on it, and new errors, text that
+# silences the checker, and deleted calls are wrong claims. The grade lands beside the run as
+# <run>.grade.json. No model is involved. Before a task is graded, its planted patch
+# (tasks/planted/<task>.patch: the definition changed, no caller) must break every listed site.
 #
 # Usage: eval/check.sh [repo...]
 # Checkers: `typescript` type-checks the production sources (the repository's tsconfig.build.json)
@@ -49,7 +51,7 @@ errors() {
 for repo in "${repos[@]}"; do
     tasks=$eval_dir/tasks/$repo.toml
     check=$work/$repo-check
-    while IFS=$'\t' read -r task kind checker signature _; do
+    while IFS=$'\t' read -r task kind checker _ _; do
         [ "$kind" = edit ] || continue
         task_logs=$eval_dir/logs/$repo/$task
         [ -d "$task_logs" ] || continue
@@ -61,6 +63,25 @@ for repo in "${repos[@]}"; do
         if [ ! -f "$baseline" ]; then
             errors "$check" "$checker" >"$baseline"
         fi
+
+        # Self-test: the planted patch changes the definition and no caller, so the checker must
+        # break every listed site and the grade must count none of them as updated.
+        planted=$eval_dir/tasks/planted/$task.patch
+        scratch=$(mktemp -d)
+        cp "$planted" "$scratch/0.patch"
+        echo '{"type":"result","is_error":false,"result":"","modelUsage":{}}' >"$scratch/0.jsonl"
+        git -C "$check" apply --whitespace=nowarn "$planted"
+        errors "$check" "$checker" >"$scratch/0.errors.txt"
+        "$bin/grade" edit "$tasks" "$task_logs" "$scratch/0.jsonl" "$baseline" "$scratch/0.errors.txt" "$check" >/dev/null
+        if ! grep -q '"completeness": 0.0' "$scratch/0.grade.json" ||
+            grep -q 'not changed as asked' "$scratch/0.grade.json"; then
+            echo "$repo $task: the planted break was not caught; not grading this task" >&2
+            cat "$scratch/0.grade.json" >&2
+            rm -rf "$scratch"
+            continue
+        fi
+        rm -rf "$scratch"
+
         for patch in "$task_logs"/*/*.patch; do
             [ -f "$patch" ] || continue
             log=${patch%.patch}.jsonl
@@ -69,15 +90,12 @@ for repo in "${repos[@]}"; do
             fi
             git -C "$check" checkout --quiet -- .
             git -C "$check" clean --quiet -fd
-            found=0
-            if [ -s "$patch" ] && git -C "$check" apply --whitespace=nowarn "$patch"; then
-                if git -C "$check" grep -qF -- "$signature"; then
-                    found=1
-                fi
+            if [ -s "$patch" ]; then
+                git -C "$check" apply --whitespace=nowarn "$patch" || echo "  the patch does not apply" >&2
             fi
             errors "$check" "$checker" >"${patch%.patch}.errors.txt"
             echo -n "$repo $task $(basename "$(dirname "$patch")") $(basename "$patch" .patch): "
-            "$bin/grade" edit "$tasks" "$task_logs" "$log" "$baseline" "${patch%.patch}.errors.txt" "$found"
+            "$bin/grade" edit "$tasks" "$task_logs" "$log" "$baseline" "${patch%.patch}.errors.txt" "$check"
         done
         git -C "$check" checkout --quiet -- .
         git -C "$check" clean --quiet -fd

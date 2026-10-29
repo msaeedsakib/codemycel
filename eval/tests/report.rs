@@ -48,33 +48,81 @@ fn committed_task_files_have_unique_ids_and_complete_edit_tasks() {
             let edit = task.kind == "edit";
             assert_eq!(task.check.is_some(), edit, "{repo} {}", task.id);
             assert_eq!(task.signature.is_some(), edit, "{repo} {}", task.id);
+            if edit {
+                let sites = task.sites.as_ref().unwrap();
+                assert_eq!(sites.len(), task.items.len(), "{repo} {}", task.id);
+                assert!(task.callee.is_some(), "{repo} {}", task.id);
+                let planted = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join(format!("tasks/planted/{}.patch", task.id));
+                assert!(planted.is_file(), "{repo} {} has no planted patch", task.id);
+            }
         }
     }
 }
 
+fn edit_task() -> Task {
+    Task {
+        kind: "edit".to_owned(),
+        items: vec!["first call".to_owned(), "second call".to_owned()],
+        signature: Some("fn f(a: u8, b: u8)".to_owned()),
+        sites: Some(vec!["src/x.rs:10".to_owned(), "src/x.rs:20".to_owned()]),
+        callee: Some("f".to_owned()),
+        ..task()
+    }
+}
+
+const DEFINITION: &str = "diff --git a/src/f.rs b/src/f.rs\n--- a/src/f.rs\n+++ b/src/f.rs\n\
+                          @@ -1,1 +1,1 @@\n-fn f(a: u8) {}\n+fn f(a: u8, b: u8) {}\n";
+
+fn edited(file: &str) -> Option<String> {
+    (file == "src/f.rs").then(|| "fn f(a: u8,\n    b: u8) {}\n".to_owned())
+}
+
 #[test]
-fn an_edit_is_graded_by_the_errors_it_adds_over_the_baseline() {
-    let mut task = task();
-    task.kind = "edit".to_owned();
+fn new_errors_are_compared_without_positions() {
     let baseline = "src/a.ts(3,1): error TS2591: Cannot find name 'process'.\n";
     let after = "src/a.ts(9,1): error TS2591: Cannot find name 'process'.\n\
                  src/b.ts(4,2): error TS2554: Expected 2 arguments, but got 1.\n";
-    let new = grading::new_errors(baseline, after);
     assert_eq!(
-        new,
+        grading::new_errors(baseline, after),
         ["src/b.ts(4,2): error TS2554: Expected 2 arguments, but got 1."]
     );
-    let grade = grading::edit_grade(&task, true, &new);
-    assert_eq!((grade.correctness, grade.completeness), (75, 0.5));
+}
 
-    let rust = grading::new_errors(
-        "",
-        "crates/a/src/x.rs:12:5: error[E0061]: this function takes 4 arguments but 3 were supplied\n",
+#[test]
+fn an_edit_counts_the_sites_it_updates_without_new_errors() {
+    let task = edit_task();
+    let both = format!(
+        "{DEFINITION}diff --git a/src/x.rs b/src/x.rs\n--- a/src/x.rs\n+++ b/src/x.rs\n\
+         @@ -10,1 +10,1 @@\n-    f(1);\n+    f(1, 0);\n@@ -20,1 +20,1 @@\n-    f(2);\n+    f(2, 0);\n"
     );
-    assert_eq!(rust.len(), 1);
-    assert_eq!(grading::edit_grade(&task, true, &[]).correctness, 100);
-    let unchanged = grading::edit_grade(&task, false, &[]);
+    let grade = grading::edit_grade(&task, &both, &edited, &[]);
+    assert_eq!((grade.correctness, grade.completeness), (100, 1.0));
+
+    let one = format!(
+        "{DEFINITION}diff --git a/src/x.rs b/src/x.rs\n--- a/src/x.rs\n+++ b/src/x.rs\n\
+         @@ -10,1 +10,1 @@\n-    f(1);\n+    f(1, 0);\n"
+    );
+    let error = "src/x.rs:20:5: error[E0061]: this function takes 2 arguments but 1 was supplied"
+        .to_owned();
+    let grade = grading::edit_grade(&task, &one, &edited, &[error]);
+    assert_eq!((grade.correctness, grade.completeness), (75, 0.5));
+    assert_eq!(grade.missing, ["second call"]);
+
+    let unchanged = grading::edit_grade(&task, "", &|_| None, &[]);
     assert_eq!((unchanged.correctness, unchanged.completeness), (0, 0.0));
+}
+
+#[test]
+fn an_edit_that_silences_the_checker_or_deletes_a_call_is_wrong() {
+    let task = edit_task();
+    let patch = format!(
+        "{DEFINITION}diff --git a/src/x.rs b/src/x.rs\n--- a/src/x.rs\n+++ b/src/x.rs\n\
+         @@ -10,1 +10,1 @@\n-    f(1);\n+    todo!();\n@@ -20,1 +20,1 @@\n-    f(2);\n+    f(2, 0);\n"
+    );
+    let grade = grading::edit_grade(&task, &patch, &edited, &[]);
+    assert_eq!(grade.wrong_claims.len(), 2, "{:?}", grade.wrong_claims);
+    assert_eq!(grade.correctness, 50);
 }
 
 #[test]
@@ -83,11 +131,8 @@ fn run_counts_tool_uses_and_sums_tokens_over_models() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        run,
-        Run {
-            tokens: 110,
-            tool_calls: 2
-        }
+        (run.tokens, run.uncached, run.tool_calls, run.read_calls),
+        (110, 77, 2, 2)
     );
     assert_eq!(
         Run::parse(r#"{"type":"result","is_error":true}"#).unwrap(),
@@ -104,6 +149,8 @@ fn task() -> Task {
         items: vec!["dispatch".to_owned(), "SmartRouter".to_owned()],
         check: None,
         signature: None,
+        sites: None,
+        callee: None,
     }
 }
 
@@ -227,23 +274,16 @@ fn report_shows_scores_per_mode_and_the_two_times_verdict() {
         &log(1, &[(100, 0, 0, 0)]),
     );
 
-    assert_eq!(
-        table(root).unwrap(),
-        "| Repository | Task | Mode | Tokens | Correctness | Completeness | Tool calls | Runs (graded) |\n\
-         |---|---|---|---:|---:|---:|---:|---:|\n\
-         | hono | router | codemycel | 600 | 100 | 100 | 3 | 3 (3) |\n\
-         | hono | router | gitnexus | 2000 | 90 | 50 | 10 | 3 (3) |\n\
-         | hono | router | serena | 100 | n/a | n/a | 1 | 1 (0) |\n\
-         \n\
-         | Mode | Tasks | Total median tokens | Mean correctness | Mean completeness |\n\
-         |---|---:|---:|---:|---:|\n\
-         | codemycel | 1 | 600 | 100 | 100 |\n\
-         | gitnexus | 1 | 2000 | 90 | 50 |\n\
-         | serena | 1 | 100 | n/a | n/a |\n\
-         \n\
-         | codemycel against | Tasks won 2× (correctness ≥, completeness ≥, tokens ≤ ½) |\n\
-         |---|---:|\n\
-         | gitnexus | 1 of 1 |\n\
-         | serena | 0 of 1 |\n"
-    );
+    let report = table(root).unwrap();
+    for row in [
+        "| hono | router | ? | codemycel | 600 | 600 | 0.000 | 100 | 100 | 0 · 0 · 3 · 0 | 0 | 3 (3) |",
+        "| hono | router | ? | gitnexus | 2000 | 2000 | 0.000 | 90 | 50 | 0 · 0 · 10 · 0 | 0 | 3 (3) |",
+        "| hono | router | ? | serena | 100 | 100 | 0.000 | n/a | n/a | 0 · 0 · 1 · 0 | 0 | 1 (0) |",
+        "| codemycel | 1 | 600 | 600 | 0.000 | 100 | 100 |",
+        "| ? | gitnexus | 1 | 2000 | 90 | 50 |",
+        "| gitnexus | 1 of 1 | 0 | yes |",
+        "| serena | 0 of 1 | 0 | no |",
+    ] {
+        assert!(report.contains(row), "missing {row}\n{report}");
+    }
 }
