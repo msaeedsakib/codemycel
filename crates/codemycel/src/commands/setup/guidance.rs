@@ -33,10 +33,10 @@ pub fn insert(text: Option<&str>) -> String {
 }
 
 /// `text` without the block, its trailing newline, and the newline before it unless that would
-/// join two lines; `None` when nothing is left.
-pub fn remove(text: &str) -> Option<String> {
+/// join two lines.
+pub fn remove(text: &str) -> String {
     let Some((start, end)) = find(text) else {
-        return Some(text.to_owned());
+        return text.to_owned();
     };
     let after = &text[end..];
     let after = after.strip_prefix('\n').unwrap_or(after);
@@ -45,6 +45,9 @@ pub fn remove(text: &str) -> Option<String> {
         Some(stripped) if after.is_empty() || stripped.ends_with('\n') => stripped,
         _ => before,
     };
-    let rest = format!("{before}{after}");
-    (!rest.is_empty()).then_some(rest)
+    format!("{before}{after}")
+}
+
+pub fn holds(text: Option<&str>) -> bool {
+    text.and_then(find).is_some()
 }
