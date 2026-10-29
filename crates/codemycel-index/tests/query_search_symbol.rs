@@ -155,6 +155,25 @@ fn kind_filter_restricts_results() {
 }
 
 #[test]
+fn kind_filter_and_total_cover_every_match() {
+    let (_temp, copy, index) = parsed(|copy| {
+        let mut text: String = (0..600)
+            .map(|i| format!("pub fn widget_{i}() {{}}\n"))
+            .collect();
+        text.push_str("/// Draws a widget.\npub trait Gadget {}\n");
+        std::fs::write(copy.join("crates/core/src/widgets.rs"), text).unwrap();
+    });
+    let registry = Registry::default();
+    let engine = index.engine(&copy, registry.adapters());
+    let traits = engine
+        .search("widget", &[NodeKind::Trait], 20, Budget::new(3000))
+        .unwrap();
+    assert_eq!(card_paths(&traits), ["crates/core/src/widgets.rs::Gadget"]);
+    let all = engine.search("widget", &[], 20, Budget::new(3000)).unwrap();
+    assert_eq!(all.sections[0].total, 602);
+}
+
+#[test]
 fn symbol_lists_dispatch_expanded_callers_with_via() {
     let Some(index) = verified() else {
         return;

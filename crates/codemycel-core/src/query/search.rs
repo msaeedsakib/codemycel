@@ -3,9 +3,6 @@ use crate::rank::{Bm25Ranker, fts_query, query_terms};
 use crate::store::StoreRead;
 use crate::{NodeKind, Ranker};
 
-/// Full-text matches fetched before ranking and the kind filter.
-const FETCH: u32 = 500;
-
 impl QueryEngine<'_> {
     /// Symbol cards for `query`, ranked, at most `limit`, only of `kinds` unless empty.
     pub fn search(
@@ -16,12 +13,7 @@ impl QueryEngine<'_> {
         budget: Budget,
     ) -> Result<Answer> {
         let hits = match fts_query(&query_terms(query)) {
-            Some(fts) => self
-                .store()
-                .search_fts(&fts, FETCH.max(limit))?
-                .into_iter()
-                .filter(|hit| kinds.is_empty() || kinds.contains(&hit.kind))
-                .collect(),
+            Some(fts) => self.store().search_fts(&fts, kinds)?,
             None => Vec::new(),
         };
         let ranked = Bm25Ranker.rank(query, hits);
