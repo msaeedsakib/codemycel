@@ -207,6 +207,42 @@ fn symbol_lists_dispatch_expanded_callers_with_via() {
 }
 
 #[test]
+fn symbol_on_a_trait_method_lists_callers_of_its_overriders_with_via() {
+    let registry = Registry::default();
+    let Some(provisioner) = local_provisioner(registry.server_for(Language::Rust).unwrap()) else {
+        return;
+    };
+    let (_temp, copy) = fixture_copy(&fixture("rust/workspace-basic"));
+    let lib = copy.join("crates/core/src/lib.rs");
+    let mut text = std::fs::read_to_string(&lib).unwrap();
+    text.push_str("\npub fn circle_area(circle: &Circle) -> f64 {\n    circle.area()\n}\n");
+    std::fs::write(&lib, text).unwrap();
+    let index = index_fixture_full(&copy, registry, &provisioner);
+    let registry = Registry::default();
+    let engine = index.engine(&copy, registry.adapters());
+    let answer = engine
+        .symbol(
+            "crates/core/src/geometry.rs::Area::area",
+            options(),
+            Budget::new(4000),
+        )
+        .unwrap();
+    let text = TextFormatter::render(&answer);
+    assert!(
+        text.lines().any(|line| line
+            .starts_with("  ← calls  crates/core/src/lib.rs::circle_area (function)")
+            && line.ends_with("via crates/core/src/geometry.rs::<Circle as Area>::area")),
+        "{text}"
+    );
+    assert!(
+        text.lines().any(|line| line
+            .starts_with("  ← calls  crates/core/src/lib.rs::total_area (function)")
+            && !line.contains(" via ")),
+        "{text}"
+    );
+}
+
+#[test]
 fn symbol_shows_unresolved_with_reasons() {
     let Some(index) = verified() else {
         return;

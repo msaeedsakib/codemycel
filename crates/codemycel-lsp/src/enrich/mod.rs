@@ -667,7 +667,8 @@ impl<'a> Enricher<'a> {
                         edges.push(lsp_edge(found, parent.node_ref(), EdgeKind::Implements));
                     }
                     Some(method)
-                        if found.kind == NodeKind::Method && found != method.node_ref() =>
+                        if matches!(found.kind, NodeKind::Method | NodeKind::Field)
+                            && found != method.node_ref() =>
                     {
                         edges.push(lsp_edge(found, method.node_ref(), EdgeKind::Overrides));
                     }

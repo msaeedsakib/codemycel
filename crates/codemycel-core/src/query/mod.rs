@@ -157,10 +157,11 @@ impl<'a> QueryEngine<'a> {
         })
     }
 
-    /// Dispatch expansion: the dependents of each parent `node` overrides or implements, through
-    /// incoming `kinds` edges, one step up and no further, each with the parent it goes through.
-    /// The parent's other overriders and implementers are siblings, not dependents, so
-    /// `overrides` and `implements` are never followed into it.
+    /// Dispatch expansion, one step and no further, each dependent with the node it goes
+    /// through: the dependents of each parent `node` overrides or implements, and the dependents
+    /// of each member that overrides `node`, through incoming `kinds` edges. The parent's other
+    /// overriders and implementers are siblings, not dependents, so `overrides` and `implements`
+    /// are never followed into it.
     pub fn dispatch_expanded(
         &self,
         node: &StoredNode,
@@ -180,6 +181,13 @@ impl<'a> QueryEngine<'a> {
             for edge in self.store.edges_to(parent.dst_id, &kinds)? {
                 if edge.src_id != node.id {
                     expanded.push((edge, parent.edge.dst.path.clone()));
+                }
+            }
+        }
+        for child in self.store.edges_to(node.id, &[EdgeKind::Overrides])? {
+            for edge in self.store.edges_to(child.src_id, &kinds)? {
+                if edge.src_id != node.id {
+                    expanded.push((edge, child.edge.src.path.clone()));
                 }
             }
         }
