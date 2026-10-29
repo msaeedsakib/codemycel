@@ -1,5 +1,5 @@
 # Rust
-/target/
+target/
 **/*.rs.bk
 
 # codemycel's own index when dogfooding
