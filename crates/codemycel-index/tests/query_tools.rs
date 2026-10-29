@@ -962,7 +962,7 @@ fn status_repo() -> Synthetic {
 }
 
 #[test]
-fn status_fields_match_spec() {
+fn status_lists_every_field() {
     let repo = status_repo();
     std::fs::write(repo.dir.path().join("src/lib.rs"), "// edited\n").unwrap();
     let other = |pid| SyncOwner {
