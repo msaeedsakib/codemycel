@@ -1,6 +1,6 @@
 # Results
 
-The benchmark as run on 2026-10-29: Claude Code 2.1.311, Sonnet 5.5 answering, Opus 5.5 grading, `--bare`, three runs per task and mode. Tokens, cost and tool calls are medians over the runs; correctness and completeness are means. "Graph" calls are calls to the mode's MCP tools. This file is the unedited output of `report`.
+The benchmark as run on 2026-10-29: Claude Code 2.1.311, Sonnet 5.5 answering, Opus 5.5 grading, `--bare`, three runs per task and mode. Tokens, cost and tool calls are medians over the runs; correctness and completeness are means. "Graph" calls are calls to the mode's MCP tools. This introduction is written by hand; everything below the tool versions is the unedited output of `report`.
 
 Tool versions: codemycel 0.1.0, GitNexus 1.6.12, Serena 2.1.0, CodeGraph 1.6.2.
 

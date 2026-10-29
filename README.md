@@ -111,7 +111,7 @@ Rust, TypeScript and JavaScript. Markdown files and package manifests (`Cargo.to
 ## ⚠️ Known limitations
 
 - **TypeScript 7 semantics.** Repositories relying on options TypeScript 7 removed or changed (older `moduleResolution` modes, `baseUrl`-dependent path mapping) may see imports resolve as `no_definition`. The root's configuration diagnostics appear in `status` and `doctor`. Upstream still marks the TypeScript 7 language service as in progress.
-- **Rust needs a toolchain** and, by default, runs build scripts and proc macros (see Security).
+- **Rust needs a toolchain** and, by default, runs build scripts and proc macros (see Security). codemycel asks rustup not to install a root's pinned toolchain while checking for it (`RUSTUP_AUTO_INSTALL=0`), which rustup honours from 1.28.1; rustup older than 1.28 installs it.
 - **Communities are heuristic** and labelled so.
 - **Renames lose notes.** Renames and file moves create new nodes, so notes on the old path are orphaned until you re-attach them.
 - **No performance targets yet.** Large repositories may take a while to index the first time.
@@ -147,7 +147,7 @@ The web view binds `127.0.0.1` only and is read-only. `note` is the only tool th
 
 ## 📊 What the benchmark showed
 
-`eval/` holds the benchmark. It asks Claude Code (Sonnet, `--bare`, three cold sessions per task) 18 questions on four public repositories: [honojs/hono](https://github.com/honojs/hono), [irixsoft/irixmail](https://github.com/irixsoft/irixmail), [rust-lang/rust-analyzer](https://github.com/rust-lang/rust-analyzer) and [nestjs/nest](https://github.com/nestjs/nest). There are 9 orientation questions ("how does a request reach X"), 7 impact questions ("who calls X, what implements it, what breaks"), and 2 edits ("add a parameter and update every caller"). Each question runs with no tool, with codemycel, and with [GitNexus](https://github.com/abhigyanpatwari/GitNexus), [Serena](https://github.com/oraios/serena) and [CodeGraph](https://github.com/colbymchenry/codegraph), each set up the way its own docs say. Answers are graded blind by Claude Opus against checklists built from language-server references. Edits are graded by the compiler alone. The full table is in [`eval/RESULTS.md`](eval/RESULTS.md).
+`eval/` holds the benchmark. It asks Claude Code (Sonnet, `--bare`, three cold sessions per task) 18 questions on four public repositories: [honojs/hono](https://github.com/honojs/hono), [irixsoft/irixmail](https://github.com/irixsoft/irixmail), [rust-lang/rust-analyzer](https://github.com/rust-lang/rust-analyzer) and [nestjs/nest](https://github.com/nestjs/nest). There are 9 orientation questions ("how does a request reach X"), 7 impact questions ("who calls X, what implements it, what breaks"), and 2 edits ("add a parameter and update every caller"). Each question runs with no tool, with codemycel, and with [GitNexus](https://github.com/abhigyanpatwari/GitNexus), [Serena](https://github.com/oraios/serena) and [CodeGraph](https://github.com/colbymchenry/codegraph), each set up the way its own docs say. Answers are graded blind by Claude Opus against a checklist per question; the impact checklists were checked against language-server references. Edits are graded by the compiler alone. The full table is in [`eval/RESULTS.md`](eval/RESULTS.md).
 
 | Mode | Total tokens (median per task, summed) | Uncached tokens | Cost | Correctness | Completeness |
 |---|---:|---:|---:|---:|---:|
