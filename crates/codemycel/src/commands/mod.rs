@@ -173,8 +173,3 @@ fn print_answer(answer: &Answer, json: bool) -> anyhow::Result<ExitCode> {
         Outcome::Ok => ExitCode::Ok,
     })
 }
-
-fn not_implemented(command: &str) -> anyhow::Result<ExitCode> {
-    eprintln!("not implemented: {command}");
-    Ok(ExitCode::Error)
-}

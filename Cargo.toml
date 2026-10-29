@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "eval"]
 
 [workspace.package]
 version = "0.1.0"
@@ -20,12 +20,14 @@ codemycel-mcp = { path = "crates/codemycel-mcp" }
 codemycel-ui = { path = "crates/codemycel-ui" }
 
 anyhow = "1.0.104"
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
 blake3 = { version = "1.8.7", features = ["serde"] }
 clap = { version = "4.6.7", features = ["derive"] }
 flate2 = "1.1.10"
 futures = { version = "0.3.34", default-features = false, features = ["std", "async-await"] }
 globset = "0.4.21"
 ignore = "0.4.34"
+include_dir = "0.7.4"
 jsonc-parser = { version = "0.34.0", features = ["cst", "serde_json"] }
 jiff = { version = "0.2.38", default-features = false, features = ["std", "serde"] }
 lsp-types = "0.97.0"
@@ -59,13 +61,26 @@ tree-sitter-md = { version = "0.5.4", features = ["parser"] }
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 
+console_error_panic_hook = "0.1.7"
+js-sys = "0.3.106"
+leptos = { version = "0.8.22", features = ["csr"] }
+leptos_router = "0.8.17"
+wasm-bindgen = "0.2.129"
+wasm-bindgen-futures = "0.4.79"
+web-sys = "0.3.106"
+
 assert_cmd = "2.2.2"
 predicates = "3.1.4"
 similar = "3.2.1"
 tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"
 
 [workspace.lints.clippy]
 unwrap_used = "deny"
+
+[profile.dist]
+inherits = "release"
+lto = "thin"

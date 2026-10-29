@@ -1,0 +1,57 @@
+# Tasks run against honojs/hono at the commit pinned in eval/README.md.
+# `expected` describes a correct answer's shape so a reader can judge the logged answers.
+
+[[task]]
+id = "request-dispatch"
+kind = "orientation"
+prompt = """How does a request passed to `app.fetch` reach a route handler in this repository? \
+Name the files and functions on the path, including where the router is chosen and where \
+matching happens. Answer in at most 15 lines; do not modify any file."""
+expected = """`fetch` in src/hono-base.ts calls the private `#dispatch`, which calls \
+`this.router.match(method, path)` on the `Router` interface (src/router.ts). The default router \
+is `SmartRouter` (src/router/smart-router/router.ts) over `RegExpRouter` and `TrieRouter`, \
+chosen in src/hono.ts. The matched handlers run through `compose` (src/compose.ts), or directly \
+when there is a single handler."""
+
+[[task]]
+id = "router-match-impact"
+kind = "impact"
+prompt = """Which classes implement the `Router` interface's `match` method in src/router.ts, who \
+calls `match` outside the routers themselves, and what would break if its signature changed? \
+Answer in at most 20 lines; do not modify any file."""
+expected = """Implementations: RegExpRouter, PreparedRegExpRouter, TrieRouter, LinearRouter, \
+PatternRouter, SmartRouter (which delegates to its candidate routers). Callers: \
+`HonoBase#dispatch` in src/hono-base.ts, plus SmartRouter's own delegation. Every implementation \
+and every caller would need to change; tests that call `match` directly are secondary."""
+
+[[task]]
+id = "compose-impact"
+kind = "impact"
+prompt = """Who calls `compose` from src/compose.ts, and what breaks if its signature changes? \
+Separate production callers from tests. Answer in at most 15 lines; do not modify any file."""
+expected = """Production callers: src/hono-base.ts (in `#dispatch`, and in `mount`/route handling \
+with the error handler) and src/middleware/combine/index.ts. Tests in src/compose.test.ts are \
+listed separately. Names the parameters (middleware array, onError, onNotFound) that callers \
+pass."""
+
+[[task]]
+id = "http-exception"
+kind = "impact"
+prompt = """Where is `HTTPException` (src/http-exception.ts) thrown in non-test code, where is it \
+caught and turned into a response, and what would break if its constructor changed? Answer in \
+at most 20 lines; do not modify any file."""
+expected = """Lists the middleware and helpers that construct it (for example basic-auth, \
+bearer-auth, jwt, body-limit, validator, csrf). Names the default `errorHandler` in \
+src/hono-base.ts, which calls `getResponse()` for HTTPException instances, as the place it \
+becomes a response. Every `new HTTPException(...)` site breaks on a constructor change."""
+
+[[task]]
+id = "cookie-orientation"
+kind = "orientation"
+prompt = """Where are cookies parsed and serialized in this repository, which public helpers \
+expose them, and which middleware use those helpers? Answer in at most 15 lines; do not modify \
+any file."""
+expected = """Parsing and serialization in src/utils/cookie.ts (`parse`, `serialize`, signed \
+variants). The public helpers in src/helper/cookie/index.ts (`getCookie`, `setCookie`, \
+`deleteCookie`, signed variants) wrap them. Middleware or helpers that use them are named, for \
+example csrf or jwt cookie options where present."""

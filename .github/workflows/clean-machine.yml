@@ -1,0 +1,59 @@
+name: clean-machine
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  clean-machine:
+    name: clean-machine-${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Fetch the release archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-build-local-*
+          path: release
+          merge-multiple: true
+      - name: Ensure rustup
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ ! -x "${CARGO_HOME:-$HOME/.cargo}/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-path
+          fi
+      - name: Install and index
+        if: runner.os != 'Windows'
+        shell: bash
+        run: scripts/clean-machine/unix.sh release clean-machine-logs
+      - name: Install and index
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: scripts/clean-machine/windows.ps1 -Artefacts release -Logs clean-machine-logs
+      - name: Upload the logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: clean-machine-logs-${{ matrix.target }}
+          path: clean-machine-logs

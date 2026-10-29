@@ -1,0 +1,60 @@
+# Tasks run against irixsoft/irixmail at the commit pinned in eval/README.md.
+# `expected` describes a correct answer's shape so a reader can judge the logged answers.
+
+[[task]]
+id = "caldav-orientation"
+kind = "orientation"
+prompt = """In this repository, where is CalDAV handled, and how does an HTTP request reach it? \
+Name the files and functions on the path from the HTTP router to the code that answers a \
+calendar REPORT request. Answer in at most 15 lines; do not modify any file."""
+expected = """Starts at the axum routes in crates/http/src/dav_mount.rs (`/dav`, `/dav/{*rest}` to \
+`dav_entry`), crosses into the irixmail_dav crate through `handler::handle` in \
+crates/dav/src/handler/mod.rs, and ends in crates/dav/src/handler/report.rs. Names files and \
+functions, not only crates."""
+
+[[task]]
+id = "batch-conditional-impact"
+kind = "impact"
+prompt = """Who calls `Store::batch_conditional` (the trait method in \
+crates/store/src/traits_store.rs), directly or through `dyn Store`, and what would break if its \
+signature changed? List the non-test call sites and the implementations that override it. \
+Answer in at most 20 lines; do not modify any file."""
+expected = """Lists the non-test call sites by file and function, notes that callers hold \
+`Arc<dyn Store>`/`&dyn Store` so every implementation must change with the trait, and names \
+`RocksdbStore::batch_conditional` in crates/store/src/rocksdb_write.rs as the production override \
+beside the trait's default body. Test stores that override it may be mentioned as also breaking."""
+
+[[task]]
+id = "smtp-to-store-trace"
+kind = "orientation"
+prompt = """How does a message accepted by an SMTP session's DATA command end up written to the \
+RocksDB store? Give the chain of functions from the SMTP session to the `RocksdbStore` method \
+that performs the write, naming where the call goes through a `dyn Store` trait object. Answer \
+in at most 20 lines; do not modify any file."""
+expected = """A chain from the session's DATA handling in crates/smtp/src/session.rs through \
+delivery or queueing (crates/mail/src/deliver.rs or crates/smtp/src/queue_enqueue.rs) to a \
+`Store` trait method (`batch`, `put`, or `batch_conditional`) called on a trait object, which \
+dispatches to the matching method of `RocksdbStore` in crates/store/src/rocksdb_write.rs. The \
+dispatch step is named explicitly."""
+
+[[task]]
+id = "enqueue-impact"
+kind = "impact"
+prompt = """Who calls `enqueue` in crates/smtp/src/queue_enqueue.rs, and what would break if it \
+gained a new required parameter? Separate production callers from tests. Answer in at most 15 \
+lines; do not modify any file."""
+expected = """Production callers include `crates/smtp/src/sub_enqueue.rs` and the bounce/DSN path in \
+crates/smtp/src/queue_deliver.rs, and anything above them that is reached transitively; the \
+tests in queue_deliver.rs and queue_enqueue.rs are listed separately. Each named call site \
+would fail to compile."""
+
+[[task]]
+id = "dkim-orientation"
+kind = "orientation"
+prompt = """Where is outbound mail DKIM-signed in this repository, where do the signing keys come \
+from, and which code paths call the signer? Answer in at most 15 lines; do not modify any \
+file."""
+expected = """Names the signer in crates/smtp/src/dkim_sign.rs (built with `from_key`), the key \
+source in the directory crate's DKIM registry (crates/directory/src/dkim_registry.rs), and the \
+submission or outbound path that signs before enqueueing (for example \
+crates/smtp/src/sub_enqueue.rs)."""

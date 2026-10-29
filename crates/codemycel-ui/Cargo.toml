@@ -7,9 +7,72 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+[features]
+bundle = ["dep:include_dir"]
+web = []
+
+[[bin]]
+name = "codemycel-ui-web"
+path = "src/web.rs"
+required-features = ["web"]
+
 [dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 codemycel-core.workspace = true
 codemycel-index.workspace = true
+
+axum.workspace = true
+include_dir = { workspace = true, optional = true }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net"] }
+tracing.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook.workspace = true
+js-sys.workspace = true
+leptos.workspace = true
+leptos_router.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys = { workspace = true, features = [
+    "CanvasRenderingContext2d",
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "Headers",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlSelectElement",
+    "KeyboardEvent",
+    "Location",
+    "MediaQueryList",
+    "MediaQueryListEvent",
+    "MouseEvent",
+    "Node",
+    "Path2d",
+    "PointerEvent",
+    "Request",
+    "RequestInit",
+    "ResizeObserver",
+    "ResizeObserverEntry",
+    "Response",
+    "TextMetrics",
+    "WheelEvent",
+    "Window",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+codemycel-index.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["net"] }
+tower.workspace = true
 
 [lints]
 workspace = true

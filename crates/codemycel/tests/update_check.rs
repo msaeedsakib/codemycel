@@ -86,7 +86,7 @@ fn update_check_is_skipped_for_mcp_and_ui() {
         .args(["ui", "--repo"])
         .arg(repo.path())
         .assert()
-        .code(1);
+        .code(2);
     checked(home.path(), &stub)
         .args(["mcp", "--repo"])
         .arg(repo.path())

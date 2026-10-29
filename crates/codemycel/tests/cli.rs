@@ -24,16 +24,6 @@ fn cli_version_prints_semver() {
 }
 
 #[test]
-fn ui_reports_not_implemented() {
-    cli()
-        .arg("ui")
-        .assert()
-        .code(1)
-        .stdout("")
-        .stderr("not implemented: ui\n");
-}
-
-#[test]
 fn note_body_is_a_flag_not_a_positional() {
     cli()
         .args(["note", "repo", "a durable finding"])

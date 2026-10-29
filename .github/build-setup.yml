@@ -1,0 +1,3 @@
+- name: Build the web view bundle
+  shell: bash
+  run: scripts/build-ui.sh
