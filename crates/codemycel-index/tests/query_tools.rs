@@ -274,6 +274,53 @@ fn impact_includes_via_callers_one_step_only() {
 }
 
 #[test]
+fn impact_via_expansion_skips_sibling_implementations() {
+    let repo = Synthetic::new(|tx, repo| {
+        code_file(tx, repo, "src/lib.rs");
+        tx.insert_nodes(&[
+            symbol("src/lib.rs::Trait::run", M, 1),
+            symbol("src/lib.rs::A::run", M, 2),
+            symbol("src/lib.rs::B::run", M, 3),
+            symbol("src/lib.rs::caller", F, 4),
+        ])
+        .unwrap();
+        tx.insert_edges(&[
+            edge(
+                ("src/lib.rs::A::run", M),
+                ("src/lib.rs::Trait::run", M),
+                EdgeKind::Overrides,
+                2,
+            ),
+            edge(
+                ("src/lib.rs::B::run", M),
+                ("src/lib.rs::Trait::run", M),
+                EdgeKind::Overrides,
+                3,
+            ),
+            edge(
+                ("src/lib.rs::caller", F),
+                ("src/lib.rs::Trait::run", M),
+                EdgeKind::Calls,
+                4,
+            ),
+        ])
+        .unwrap();
+    });
+    let answer = repo
+        .engine()
+        .impact("src/lib.rs::A::run", 3, &[], Budget::new(6000))
+        .unwrap();
+    let text = TextFormatter::render(&answer);
+    assert_eq!(
+        section(&text, "depth 1:"),
+        ["  ← calls  src/lib.rs::caller (function) L4 [L4] via src/lib.rs::Trait::run"],
+        "{text}"
+    );
+    assert!(!text.contains("B::run"), "{text}");
+    assert!(!text.contains("depth 2:"), "{text}");
+}
+
+#[test]
 fn impact_on_hub_truncates_with_footer_within_budget() {
     const DEPENDENTS: usize = 5000;
     let repo = Synthetic::new(|tx, repo| {
