@@ -94,12 +94,14 @@ impl Provisioner {
         &self.home
     }
 
-    /// Whether the program a language's roots need (its toolchain prerequisite) is runnable
-    /// outside any directory that pins a toolchain. True for a server without a toolchain.
+    /// Whether the program a language's roots need (its toolchain prerequisite) is on the search
+    /// path and starts. Whether it then works for a root, which with rustup depends on the
+    /// toolchain the root's directory selects, is `toolchain_missing`'s question. True for a
+    /// server without a toolchain.
     pub fn prerequisite_present(&self, adapter: &dyn ServerAdapter) -> bool {
         adapter.toolchain().is_none_or(|toolchain| {
             self.run_prerequisite(toolchain.prerequisite, &std::env::temp_dir())
-                .is_some_and(|output| output.status.success())
+                .is_some()
         })
     }
 
@@ -127,8 +129,10 @@ impl Provisioner {
         }))
     }
 
-    /// `<prerequisite> --version` in `dir`, never letting rustup install the toolchain the
-    /// directory pins. `None` when the program is absent or does not start.
+    /// `<prerequisite> --version` in `dir`, with `RUSTUP_AUTO_INSTALL=0` so that rustup 1.28.1 or
+    /// later does not install the toolchain the directory pins. Older rustup ignores the variable:
+    /// before 1.28.0 it installs the pinned toolchain. `None` when the program is absent or does not
+    /// start.
     fn run_prerequisite(&self, prerequisite: &str, dir: &Path) -> Option<Output> {
         let program = lookup::find_on_path(prerequisite, self.search_path())?;
         let mut command = Command::new(program);
