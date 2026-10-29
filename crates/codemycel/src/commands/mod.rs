@@ -75,18 +75,35 @@ fn locate(ctx: &Context) -> anyhow::Result<RepoLocation> {
 }
 
 /// The read-only index of `location`, or `None` after saying why there is none: no index (with
-/// the registry's repositories listed on stderr for information) or one of another schema.
-fn open_index(location: &RepoLocation) -> anyhow::Result<Option<Store>> {
+/// the registry's repositories listed for information) or one of another schema. With `json`
+/// the reason is one object whose `outcome` is `no_index` or `out_of_date`.
+fn open_index(location: &RepoLocation, json: bool) -> anyhow::Result<Option<Store>> {
     let db = location.index_path();
-    let repo = location.root.display();
+    let repo = location.root.display().to_string();
     if !db.exists() {
-        println!("no index: run codemycel init in {repo}");
-        if let Ok(home) = codemycel_core::config::home_dir() {
-            let registry = RepoRegistry::load(&home);
-            if !registry.entries().is_empty() {
+        let message = format!("no index: run codemycel init in {repo}");
+        let indexed: Vec<String> = codemycel_core::config::home_dir()
+            .map(|home| {
+                RepoRegistry::load(&home)
+                    .entries()
+                    .iter()
+                    .map(|entry| entry.path.display().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if json {
+            print_json(&serde_json::json!({
+                "outcome": "no_index",
+                "message": message,
+                "repo": repo,
+                "indexed_repositories": indexed,
+            }))?;
+        } else {
+            println!("{message}");
+            if !indexed.is_empty() {
                 eprintln!("indexed repositories:");
-                for entry in registry.entries() {
-                    eprintln!("  {}", entry.path.display());
+                for path in indexed {
+                    eprintln!("  {path}");
                 }
             }
         }
@@ -95,13 +112,29 @@ fn open_index(location: &RepoLocation) -> anyhow::Result<Option<Store>> {
     match Store::open(&db, true) {
         Ok(store) => Ok(Some(store)),
         Err(StoreError::SchemaMismatch { found, .. }) => {
-            println!(
+            let message = format!(
                 "index schema {found} is out of date (expected {SCHEMA_VERSION}): run codemycel init in {repo}"
             );
+            if json {
+                print_json(&serde_json::json!({
+                    "outcome": "out_of_date",
+                    "message": message,
+                    "repo": repo,
+                    "schema": found,
+                    "expected_schema": SCHEMA_VERSION,
+                }))?;
+            } else {
+                println!("{message}");
+            }
             Ok(None)
         }
         Err(error) => Err(error).with_context(|| format!("opening {}", db.display())),
     }
+}
+
+fn print_json(value: &serde_json::Value) -> anyhow::Result<()> {
+    println!("{}", serde_json::to_string_pretty(value)?);
+    Ok(())
 }
 
 /// Runs one query tool on the repository's index and prints its answer.
@@ -110,7 +143,7 @@ fn query(
     run: impl FnOnce(&QueryEngine<'_>) -> Result<Answer, QueryError>,
 ) -> anyhow::Result<ExitCode> {
     let location = locate(ctx)?;
-    let Some(store) = open_index(&location)? else {
+    let Some(store) = open_index(&location, ctx.json)? else {
         return Ok(ExitCode::Degraded);
     };
     let registry = Registry::default();
@@ -123,10 +156,7 @@ fn query(
 /// nothing matched.
 fn print_answer(answer: &Answer, json: bool) -> anyhow::Result<ExitCode> {
     if json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&JsonFormatter::render(answer))?
-        );
+        print_json(&JsonFormatter::render(answer))?;
     } else {
         print!("{}", TextFormatter::render(answer));
     }
