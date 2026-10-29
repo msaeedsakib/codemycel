@@ -215,6 +215,53 @@ fn setup_merges_and_remove_restores_exactly() {
 }
 
 #[test]
+fn remove_keeps_a_server_map_and_file_that_were_there_before() {
+    for case in CASES.iter().filter(|case| case.config.0.ends_with("json")) {
+        let servers = if case.id == "opencode" {
+            "mcp"
+        } else {
+            "mcpServers"
+        };
+        for seed in [
+            format!(r#"{{"theme": "dark", "{servers}": {{}}}}"#),
+            format!(r#"{{"{servers}": {{}}}}"#),
+        ] {
+            let home = Home::new();
+            std::fs::create_dir_all(home.path(case.dir)).unwrap();
+            home.write(case.config.0, &seed);
+
+            home.setup(&["--harness", case.id]);
+            assert_registered(case, &home.read(case.config.0).unwrap());
+            home.setup(&["--remove", "--harness", case.id]);
+
+            assert_eq!(
+                home.read(case.config.0).as_deref(),
+                Some(seed.as_str()),
+                "{}",
+                case.id
+            );
+        }
+    }
+}
+
+#[test]
+fn remove_without_a_record_takes_only_the_entry() {
+    let home = Home::new();
+    std::fs::create_dir_all(home.path(".claude")).unwrap();
+    home.write(
+        ".claude.json",
+        r#"{"mcpServers": {"codemycel": {"command": "codemycel"}}}"#,
+    );
+
+    home.setup(&["--remove", "--harness", "claude-code"]);
+
+    assert_eq!(
+        home.read(".claude.json").as_deref(),
+        Some(r#"{"mcpServers": {}}"#)
+    );
+}
+
+#[test]
 fn setup_is_idempotent() {
     let home = Home::new();
     for case in &CASES {

@@ -394,20 +394,28 @@ pub trait StoreRead {
         Ok(count.unwrap_or(0))
     }
 
-    /// FTS5 matches for `query` (FTS5 query syntax), best first, scored by BM25 with
-    /// per-column weights.
-    fn search_fts(&self, query: &str, limit: u32) -> Result<Vec<SearchHit>> {
-        let mut stmt = self.conn().prepare_cached(
+    /// Every FTS5 match for `query` (FTS5 query syntax) of one of `kinds` (any kind when empty),
+    /// best first, scored by BM25 with per-column weights.
+    fn search_fts(&self, query: &str, kinds: &[NodeKind]) -> Result<Vec<SearchHit>> {
+        let filter = if kinds.is_empty() {
+            String::new()
+        } else {
+            let placeholders: Vec<String> = (2..kinds.len() + 2).map(|i| format!("?{i}")).collect();
+            format!(" AND n.kind IN ({})", placeholders.join(", "))
+        };
+        let sql = format!(
             "SELECT n.id, n.kind, n.name, f.path,
                     bm25(search_fts, 10.0, 6.0, 2.0, 2.0, 1.0) AS score
              FROM search_fts
              JOIN nodes n ON n.id = search_fts.rowid
              LEFT JOIN files f ON f.id = n.file_id
-             WHERE search_fts MATCH ?1
-             ORDER BY score, n.id
-             LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(params![query, limit], |row| {
+             WHERE search_fts MATCH ?1{filter}
+             ORDER BY score, n.id"
+        );
+        let mut values = vec![Value::Text(query.to_owned())];
+        values.extend(kinds.iter().map(|k| Value::Text(k.as_str().to_owned())));
+        let mut stmt = self.conn().prepare_cached(&sql)?;
+        let rows = stmt.query_map(params_from_iter(values), |row| {
             Ok(SearchHit {
                 node_id: NodeId(row.get(0)?),
                 kind: row.get(1)?,

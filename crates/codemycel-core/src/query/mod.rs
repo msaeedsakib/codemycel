@@ -22,8 +22,8 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 pub use answer::{
-    Answer, Card, CardCounts, CardNote, CommunityRef, Direction, EdgeLine, Line, NodeLine,
-    NoteLine, Outcome, Section, SectionCount, SourceLine, Truncation, UnresolvedLine,
+    Answer, Card, CardCounts, CardNote, CommunityLine, CommunityRef, Direction, EdgeLine, Line,
+    NodeLine, NoteLine, Outcome, Section, SectionCount, SourceLine, Truncation, UnresolvedLine,
 };
 pub use budget::Budget;
 pub use card::SymbolCard;
@@ -157,19 +157,27 @@ impl<'a> QueryEngine<'a> {
         })
     }
 
-    /// Dispatch expansion: the incoming `kinds` edges of each parent `node` overrides or
-    /// implements, one step up and no further, each with the parent it goes through.
+    /// Dispatch expansion: the dependents of each parent `node` overrides or implements, through
+    /// incoming `kinds` edges, one step up and no further, each with the parent it goes through.
+    /// The parent's other overriders and implementers are siblings, not dependents, so
+    /// `overrides` and `implements` are never followed into it.
     pub fn dispatch_expanded(
         &self,
         node: &StoredNode,
         kinds: &[EdgeKind],
     ) -> Result<Vec<(StoredEdge, SemanticPath)>> {
+        const DISPATCH: [EdgeKind; 2] = [EdgeKind::Overrides, EdgeKind::Implements];
+        let kinds: Vec<EdgeKind> = kinds
+            .iter()
+            .copied()
+            .filter(|kind| !DISPATCH.contains(kind))
+            .collect();
+        if kinds.is_empty() {
+            return Ok(Vec::new());
+        }
         let mut expanded = Vec::new();
-        for parent in self
-            .store
-            .edges_from(node.id, &[EdgeKind::Overrides, EdgeKind::Implements])?
-        {
-            for edge in self.store.edges_to(parent.dst_id, kinds)? {
+        for parent in self.store.edges_from(node.id, &DISPATCH)? {
+            for edge in self.store.edges_to(parent.dst_id, &kinds)? {
                 if edge.src_id != node.id {
                     expanded.push((edge, parent.edge.dst.path.clone()));
                 }

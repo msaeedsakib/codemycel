@@ -269,7 +269,7 @@ fn options() -> SymbolOptions {
 }
 
 #[test]
-fn text_card_matches_spec_layout_exactly() {
+fn text_card_layout_is_exact() {
     let repo = seeded();
     let adapters = no_adapters();
     let engine = repo.engine(&adapters);

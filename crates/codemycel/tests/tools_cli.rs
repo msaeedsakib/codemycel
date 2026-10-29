@@ -135,3 +135,23 @@ fn queries_without_an_index_say_so() {
             repo.path().display()
         ));
 }
+
+#[test]
+fn queries_without_an_index_say_so_in_json() {
+    let home = tempfile::tempdir().unwrap();
+    let repo = tempfile::tempdir().unwrap();
+    for args in [&["search", "foo"][..], &["note", "foo", "--body", "a body"]] {
+        let (code, out) = run(repo.path(), home.path(), args, true);
+        assert_eq!(code, Some(2), "{args:?}: {out}");
+        let json: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(json["outcome"], "no_index", "{args:?}: {json}");
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("no index: run codemycel init in "),
+            "{json}"
+        );
+        assert!(json["indexed_repositories"].is_array(), "{json}");
+    }
+}

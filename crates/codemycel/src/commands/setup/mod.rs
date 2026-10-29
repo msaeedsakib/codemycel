@@ -5,6 +5,7 @@ mod gemini;
 mod guidance;
 mod merge;
 mod opencode;
+mod state;
 
 use std::io::{BufRead as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -12,6 +13,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context as _, bail};
 
 use self::merge::Entry;
+use self::state::{Created, State};
 use super::ExitCode;
 use crate::cli::{Context, SetupArgs};
 
@@ -47,16 +49,18 @@ pub fn run(args: &SetupArgs, _ctx: &Context) -> anyhow::Result<ExitCode> {
     } else {
         named(&harnesses, &args.harness)?
     };
+    let mut state = State::load()?;
     for harness in chosen {
         if !harness.dir.is_dir() {
             println!("{}: not installed, skipped", harness.name);
             continue;
         }
         if args.remove {
-            remove(harness)?;
+            remove(harness, &mut state)?;
         } else {
-            install(harness)?;
+            install(harness, &mut state)?;
         }
+        state.save()?;
     }
     Ok(ExitCode::Ok)
 }
@@ -121,8 +125,21 @@ fn pick(harnesses: &[Harness], removing: bool) -> anyhow::Result<Vec<&Harness>> 
         .collect()
 }
 
-fn install(harness: &Harness) -> anyhow::Result<()> {
+/// Adds the entry and guidance, recording in `state` what was created when it was not there
+/// before, so `remove` can restore the files exactly.
+fn install(harness: &Harness, state: &mut State) -> anyhow::Result<()> {
+    let mut created = None;
     let changed = edit(&harness.config, |text| {
+        let (holds_servers, holds_entry) = match harness.format {
+            Format::Json { servers } => merge::json_holds(text, servers, SERVER_NAME)?,
+            Format::Toml { servers } => merge::toml_holds(text, servers, SERVER_NAME)?,
+        };
+        if !holds_entry {
+            created = Some(Created {
+                file: text.is_none(),
+                servers: !holds_servers,
+            });
+        }
         Ok(Some(match harness.format {
             Format::Json { servers } => {
                 merge::json_upsert(text, servers, SERVER_NAME, &harness.entry)?
@@ -132,10 +149,25 @@ fn install(harness: &Harness) -> anyhow::Result<()> {
             }
         }))
     })?;
+    if let Some(created) = created {
+        state.record(harness.id, &harness.config, created);
+    }
     report(harness, &harness.config, changed, "MCP server added to");
     match &harness.instructions {
         Some(path) => {
-            let changed = edit(path, |text| Ok(Some(guidance::insert(text))))?;
+            let mut created = None;
+            let changed = edit(path, |text| {
+                if !guidance::holds(text) {
+                    created = Some(Created {
+                        file: text.is_none(),
+                        servers: false,
+                    });
+                }
+                Ok(Some(guidance::insert(text)))
+            })?;
+            if let Some(created) = created {
+                state.record(harness.id, path, created);
+            }
             report(harness, path, changed, "guidance written to");
         }
         None => println!(
@@ -147,20 +179,46 @@ fn install(harness: &Harness) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn remove(harness: &Harness) -> anyhow::Result<()> {
-    let changed = edit(&harness.config, |text| match text {
-        None => Ok(None),
-        Some(text) => match harness.format {
-            Format::Json { servers } => merge::json_remove(text, servers, SERVER_NAME),
-            Format::Toml { servers } => merge::toml_remove(text, servers, SERVER_NAME),
-        },
+/// Takes out the entry and guidance, and the server map or file only where `state` records that
+/// `install` created them.
+fn remove(harness: &Harness, state: &mut State) -> anyhow::Result<()> {
+    let created = state.take(harness.id, &harness.config);
+    let changed = edit(&harness.config, |text| {
+        let Some(text) = text else {
+            return Ok(None);
+        };
+        let (rest, empty) = match harness.format {
+            Format::Json { servers } => {
+                let rest = merge::json_remove(text, servers, SERVER_NAME, created.servers)?;
+                let empty = rest.trim() == "{}";
+                (rest, empty)
+            }
+            Format::Toml { servers } => {
+                let rest = merge::toml_remove(text, servers, SERVER_NAME)?;
+                let empty = rest.trim().is_empty();
+                (rest, empty)
+            }
+        };
+        Ok(keep(text, rest, empty, created))
     })?;
     report(harness, &harness.config, changed, "MCP server removed from");
     if let Some(path) = &harness.instructions {
-        let changed = edit(path, |text| Ok(text.and_then(guidance::remove)))?;
+        let created = state.take(harness.id, path);
+        let changed = edit(path, |text| {
+            Ok(text.and_then(|text| {
+                let rest = guidance::remove(text);
+                let empty = rest.is_empty();
+                keep(text, rest, empty, created)
+            }))
+        })?;
         report(harness, path, changed, "guidance removed from");
     }
     Ok(())
+}
+
+/// `rest`, or `None` to delete the file when `install` created it and removing left it `empty`.
+fn keep(text: &str, rest: String, empty: bool, created: Created) -> Option<String> {
+    (rest == text || !empty || !created.file).then_some(rest)
 }
 
 fn report(harness: &Harness, path: &Path, changed: bool, done: &str) {

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use codemycel_core::query::{Answer, Budget, QueryEngine, TextFormatter};
+use codemycel_core::query::{Answer, Budget, JsonFormatter, QueryEngine, TextFormatter};
 use codemycel_core::store::{Store, StoreRead, Tx};
 use codemycel_core::{
     ByteRange, Candidate, CandidateRole, Coverage, DegradeReason, Edge, EdgeKind, FileKind,
@@ -271,6 +271,53 @@ fn impact_includes_via_callers_one_step_only() {
         "{text}"
     );
     assert!(!text.contains("calls_grand"), "{text}");
+}
+
+#[test]
+fn impact_via_expansion_skips_sibling_implementations() {
+    let repo = Synthetic::new(|tx, repo| {
+        code_file(tx, repo, "src/lib.rs");
+        tx.insert_nodes(&[
+            symbol("src/lib.rs::Trait::run", M, 1),
+            symbol("src/lib.rs::A::run", M, 2),
+            symbol("src/lib.rs::B::run", M, 3),
+            symbol("src/lib.rs::caller", F, 4),
+        ])
+        .unwrap();
+        tx.insert_edges(&[
+            edge(
+                ("src/lib.rs::A::run", M),
+                ("src/lib.rs::Trait::run", M),
+                EdgeKind::Overrides,
+                2,
+            ),
+            edge(
+                ("src/lib.rs::B::run", M),
+                ("src/lib.rs::Trait::run", M),
+                EdgeKind::Overrides,
+                3,
+            ),
+            edge(
+                ("src/lib.rs::caller", F),
+                ("src/lib.rs::Trait::run", M),
+                EdgeKind::Calls,
+                4,
+            ),
+        ])
+        .unwrap();
+    });
+    let answer = repo
+        .engine()
+        .impact("src/lib.rs::A::run", 3, &[], Budget::new(6000))
+        .unwrap();
+    let text = TextFormatter::render(&answer);
+    assert_eq!(
+        section(&text, "depth 1:"),
+        ["  ← calls  src/lib.rs::caller (function) L4 [L4] via src/lib.rs::Trait::run"],
+        "{text}"
+    );
+    assert!(!text.contains("B::run"), "{text}");
+    assert!(!text.contains("depth 2:"), "{text}");
 }
 
 #[test]
@@ -693,6 +740,50 @@ index: no git (0 files changed since) · coverage: rust lsp ✓
 }
 
 #[test]
+fn overview_json_marks_every_community_derived() {
+    let Some(index) = verified() else {
+        return;
+    };
+    let index = index.lock().unwrap();
+    let (_, copy, index) = &*index;
+    let registry = Registry::default();
+    let engine = index.engine(copy, registry.adapters());
+    let render = |scope: Option<&str>| {
+        JsonFormatter::render(&engine.overview(scope, Budget::new(4000)).unwrap())
+    };
+    let communities = |json: &serde_json::Value, section: &str| -> Vec<serde_json::Value> {
+        json[section]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["type"] == "community")
+            .cloned()
+            .collect()
+    };
+    let repo = render(None);
+    let directory = render(Some("crates/cli/"));
+    let community = render(Some("community:1b29ae35"));
+    for (json, section, count) in [
+        (&repo, "communities", 8),
+        (&directory, "communities", 4),
+        (&community, "overview", 1),
+        (&community, "inbound", 1),
+        (&community, "outbound", 1),
+    ] {
+        let items = communities(json, section);
+        assert_eq!(items.len(), count, "{section}: {json}");
+        for item in items {
+            assert_eq!(item["derived"], true, "{item}");
+            assert!(
+                item["label"].is_string() && item["path"].is_string(),
+                "{item}"
+            );
+        }
+    }
+    assert_eq!(repo["communities"].as_array().unwrap().len(), 8);
+}
+
+#[test]
 fn unresolved_repo_summary_by_reason_and_root() {
     let Some(summary) =
         on_fixture(|engine| engine.unresolved(None, None, Budget::new(3000)).unwrap())
@@ -871,7 +962,7 @@ fn status_repo() -> Synthetic {
 }
 
 #[test]
-fn status_fields_match_spec() {
+fn status_lists_every_field() {
     let repo = status_repo();
     std::fs::write(repo.dir.path().join("src/lib.rs"), "// edited\n").unwrap();
     let other = |pid| SyncOwner {

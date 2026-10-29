@@ -64,25 +64,44 @@ pub fn json_upsert(
     })
 }
 
-/// `text` without `servers.name`, and without `servers` when that leaves it empty; `None` when
-/// nothing else is left, so the file can go.
-pub fn json_remove(text: &str, servers: &str, name: &str) -> anyhow::Result<Option<String>> {
+/// Whether `text` (a JSON or JSONC document, or nothing) holds `servers`, and `servers.name`.
+pub fn json_holds(text: Option<&str>, servers: &str, name: &str) -> anyhow::Result<(bool, bool)> {
+    let Some(text) = text.filter(|text| !text.trim().is_empty()) else {
+        return Ok((false, false));
+    };
+    let root = parse_object(text)?;
+    Ok(match property(&root, servers) {
+        None => (false, false),
+        Some((_, prop)) => match &prop.value {
+            Ast::Object(map) => (true, property(map, name).is_some()),
+            _ => (true, false),
+        },
+    })
+}
+
+/// `text` without `servers.name`, and, when `drop_servers`, without `servers` once that leaves
+/// it empty.
+pub fn json_remove(
+    text: &str,
+    servers: &str,
+    name: &str,
+    drop_servers: bool,
+) -> anyhow::Result<String> {
     let root = parse_object(text)?;
     let Some((servers_index, servers_prop)) = property(&root, servers) else {
-        return Ok(Some(text.to_owned()));
+        return Ok(text.to_owned());
     };
     let Ast::Object(map) = &servers_prop.value else {
-        return Ok(Some(text.to_owned()));
+        return Ok(text.to_owned());
     };
     let Some((index, _)) = property(map, name) else {
-        return Ok(Some(text.to_owned()));
+        return Ok(text.to_owned());
     };
-    let rest = if map.properties.len() == 1 {
+    Ok(if drop_servers && map.properties.len() == 1 {
         cut(text, &root, servers_index)
     } else {
         cut(text, map, index)
-    };
-    Ok((rest.trim() != "{}").then_some(rest))
+    })
 }
 
 fn parse_object(text: &str) -> anyhow::Result<Object<'_>> {
@@ -216,21 +235,29 @@ pub fn toml_upsert(
     Ok(document.to_string())
 }
 
+/// Whether `text` (a TOML document, or nothing) holds the table `servers`, and `[servers.name]`.
+pub fn toml_holds(text: Option<&str>, servers: &str, name: &str) -> anyhow::Result<(bool, bool)> {
+    let document = parse_toml(text.unwrap_or(""))?;
+    Ok(match document.get(servers) {
+        None => (false, false),
+        Some(map) => (true, map.get(name).is_some()),
+    })
+}
+
 /// `text` without `[servers.name]`, and without `servers` when that leaves it empty and it has
-/// no header of its own; `None` when nothing is left.
-pub fn toml_remove(text: &str, servers: &str, name: &str) -> anyhow::Result<Option<String>> {
+/// no header of its own.
+pub fn toml_remove(text: &str, servers: &str, name: &str) -> anyhow::Result<String> {
     let mut document = parse_toml(text)?;
     let Some(map) = document.get_mut(servers).and_then(Item::as_table_mut) else {
-        return Ok(Some(text.to_owned()));
+        return Ok(text.to_owned());
     };
     if map.remove(name).is_none() {
-        return Ok(Some(text.to_owned()));
+        return Ok(text.to_owned());
     }
     if map.is_empty() && map.is_implicit() {
         document.remove(servers);
     }
-    let text = document.to_string();
-    Ok((!text.trim().is_empty()).then_some(text))
+    Ok(document.to_string())
 }
 
 fn parse_toml(text: &str) -> anyhow::Result<DocumentMut> {

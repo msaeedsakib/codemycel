@@ -51,11 +51,20 @@ fn global_flags_accepted_before_and_after_subcommand() {
         vec!["search", "store", "--repo", path, "--json"],
         vec!["--json", "impact", "Store::open", "--repo", path],
     ] {
-        cli()
+        let output = cli()
             .args(&args)
             .assert()
             .code(2)
-            .stdout(no_index(repo.path()));
+            .get_output()
+            .stdout
+            .clone();
+        let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(json["outcome"], "no_index", "{args:?}: {json}");
+        assert_eq!(
+            json["message"],
+            no_index(repo.path()).trim_end(),
+            "{args:?}: {json}"
+        );
     }
 }
 

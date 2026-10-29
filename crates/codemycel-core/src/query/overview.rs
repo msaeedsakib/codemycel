@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use super::impact::plural;
 use super::status::{root_label, root_state};
 use super::{
-    Answer, Budget, Direction, Line, NodeLine, Outcome, QueryEngine, Result, Section, SymbolCard,
+    Answer, Budget, CommunityLine, Direction, Line, NodeLine, Outcome, QueryEngine, Result,
+    Section, SymbolCard,
 };
 use crate::store::{StoreRead, StoredEdge};
 use crate::{EdgeKind, NodeId, NodeKind, RepoPath, SemanticPath, StoredNode};
@@ -120,21 +121,17 @@ impl QueryEngine<'_> {
             };
             let top = self.ranked(Some(node.id), None, TOP_MEMBERS)?;
             let names: Vec<&str> = top.iter().map(in_file).collect();
-            communities.push((
-                community.members.len(),
-                format!(
-                    "derived:{} ({path})  {} · top: {}",
-                    community.label,
+            let line = CommunityLine {
+                detail: Some(format!(
+                    "{} · top: {}",
                     plural(community.members.len(), "member"),
                     names.join(", ")
-                ),
-            ));
+                )),
+                ..CommunityLine::new(path, community.label)
+            };
+            communities.push((community.members.len(), line));
         }
-        communities.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        let communities = communities
-            .into_iter()
-            .map(|(_, text)| Line::text(text))
-            .collect();
+        let communities = by_count(communities);
         let gods = store
             .nodes_by_in_degree(&RELATIONS, None, None, GOD_NODES)?
             .into_iter()
@@ -227,21 +224,13 @@ impl QueryEngine<'_> {
         let mut communities = Vec::new();
         for (id, here) in present {
             let community = self.node(id)?;
-            communities.push((
-                here,
-                format!(
-                    "derived:{} ({})  {} here",
-                    community.node.name,
-                    community.node.path,
-                    plural(here, "member")
-                ),
-            ));
+            let line = CommunityLine {
+                detail: Some(format!("{} here", plural(here, "member"))),
+                ..CommunityLine::new(community.node.path, community.node.name)
+            };
+            communities.push((here, line));
         }
-        communities.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        let communities = communities
-            .into_iter()
-            .map(|(_, text)| Line::text(text))
-            .collect();
+        let communities = by_count(communities);
         let sections = vec![
             Section::new("overview", 0, vec![heading]).without_header(),
             Section::new("files", 1, file_lines),
@@ -330,8 +319,8 @@ impl QueryEngine<'_> {
             key(a).cmp(&key(b))
         });
         let mut internal = 0;
-        let mut inbound: BTreeMap<String, usize> = BTreeMap::new();
-        let mut outbound: BTreeMap<String, usize> = BTreeMap::new();
+        let mut inbound: BTreeMap<Option<CommunityLine>, usize> = BTreeMap::new();
+        let mut outbound: BTreeMap<Option<CommunityLine>, usize> = BTreeMap::new();
         for member in &members {
             for edge in store.edges_to(member.id, &RELATIONS)? {
                 match self.community_of(edge.src_id, community.id)? {
@@ -346,10 +335,10 @@ impl QueryEngine<'_> {
             }
         }
         let summary = vec![
-            Line::field(
-                "community",
-                format!("derived:{} ({})", community.node.name, path),
-            ),
+            Line::Community(CommunityLine {
+                key: Some("community".to_owned()),
+                ..CommunityLine::new(path, community.node.name)
+            }),
             Line::field("size", plural(members.len(), "member")),
             Line::field("internal", plural(internal, "edge")),
         ];
@@ -366,19 +355,24 @@ impl QueryEngine<'_> {
         self.finish(Outcome::Ok, sections, budget, "raise max_tokens")
     }
 
-    /// `None` when `other` is in `community`; else the label of the community it is in.
-    fn community_of(&self, other: NodeId, community: NodeId) -> Result<Option<String>> {
+    /// `None` when `other` is in `community`; else the community it is in, `None` within when
+    /// it is in none.
+    fn community_of(
+        &self,
+        other: NodeId,
+        community: NodeId,
+    ) -> Result<Option<Option<CommunityLine>>> {
         let node = self.node(other)?;
         match node.community_id {
             Some(id) if id == community => Ok(None),
             Some(id) => {
                 let other = self.node(id)?;
-                Ok(Some(format!(
-                    "derived:{} ({})",
-                    other.node.name, other.node.path
-                )))
+                Ok(Some(Some(CommunityLine::new(
+                    other.node.path,
+                    other.node.name,
+                ))))
             }
-            None => Ok(Some("no community".to_owned())),
+            None => Ok(Some(None)),
         }
     }
 
@@ -410,12 +404,40 @@ fn in_file(node: &StoredNode) -> &str {
     path.split_once("::").map_or(path, |(_, rest)| rest)
 }
 
-/// `<community>  N edges` lines, most edges first.
-fn boundary(counts: BTreeMap<String, usize>) -> Vec<Line> {
-    let mut counts: Vec<(String, usize)> = counts.into_iter().collect();
-    counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    counts
+/// `<community>  N edges` lines, most edges first; `no community` for nodes in none.
+fn boundary(counts: BTreeMap<Option<CommunityLine>, usize>) -> Vec<Line> {
+    let mut lines: Vec<(usize, String, Line)> = counts
         .into_iter()
-        .map(|(label, count)| Line::field(label, plural(count, "edge")))
+        .map(|(community, count)| {
+            let edges = plural(count, "edge");
+            match community {
+                Some(community) => {
+                    let name = community.name();
+                    let line = CommunityLine {
+                        detail: Some(edges),
+                        ..community
+                    };
+                    (count, name, Line::Community(line))
+                }
+                None => {
+                    let name = "no community".to_owned();
+                    (count, name.clone(), Line::field(name, edges))
+                }
+            }
+        })
+        .collect();
+    lines.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    lines.into_iter().map(|(_, _, line)| line).collect()
+}
+
+/// Community lines with their member counts, most members first, then by name.
+fn by_count(mut communities: Vec<(usize, CommunityLine)>) -> Vec<Line> {
+    communities.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| (a.1.name(), &a.1.detail).cmp(&(b.1.name(), &b.1.detail)))
+    });
+    communities
+        .into_iter()
+        .map(|(_, line)| Line::Community(line))
         .collect()
 }
