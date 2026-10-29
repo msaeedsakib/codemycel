@@ -117,8 +117,8 @@ fn Header(meta: RwSignal<Option<Result<Meta, String>>>) -> impl IntoView {
     };
     let repo_name = move || {
         let repo = repo();
-        repo.trim_end_matches('/')
-            .rsplit('/')
+        repo.trim_end_matches(['/', '\\'])
+            .rsplit(['/', '\\'])
             .next()
             .unwrap_or_default()
             .to_owned()
