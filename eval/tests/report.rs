@@ -53,8 +53,18 @@ fn committed_task_files_have_unique_ids_and_complete_edit_tasks() {
                 assert_eq!(sites.len(), task.items.len(), "{repo} {}", task.id);
                 assert!(task.callee.is_some(), "{repo} {}", task.id);
                 let planted = Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join(format!("tasks/planted/{}.patch", task.id));
-                assert!(planted.is_file(), "{repo} {} has no planted patch", task.id);
+                    .join("tasks/planted")
+                    .join(&task.id);
+                let patches = std::fs::read_dir(&planted)
+                    .map(|entries| {
+                        entries
+                            .filter(|entry| {
+                                entry.as_ref().unwrap().path().extension() == Some("patch".as_ref())
+                            })
+                            .count()
+                    })
+                    .unwrap_or(0);
+                assert!(patches > 0, "{repo} {} has no planted patch", task.id);
             }
         }
     }
@@ -111,6 +121,24 @@ fn an_edit_counts_the_sites_it_updates_without_new_errors() {
 
     let unchanged = grading::edit_grade(&task, "", &|_| None, &[]);
     assert_eq!((unchanged.correctness, unchanged.completeness), (0, 0.0));
+}
+
+#[test]
+fn a_planted_patch_catches_only_the_unchanged_sites_the_checker_breaks() {
+    let task = edit_task();
+    let one = format!(
+        "{DEFINITION}diff --git a/src/x.rs b/src/x.rs\n--- a/src/x.rs\n+++ b/src/x.rs\n\
+         @@ -10,1 +10,1 @@\n-    f(1);\n+    f(1, 0);\n"
+    );
+    assert!(grading::signature_holds(&task, &one, &edited));
+    assert!(!grading::signature_holds(&task, &one, &|_| None));
+    let errors = [
+        "src/x.rs:10:5: error[E0308]: mismatched types".to_owned(),
+        "src/x.rs:21:5: error[E0061]: this function takes 2 arguments but 1 was supplied"
+            .to_owned(),
+    ];
+    assert_eq!(grading::caught_sites(&task, &one, &errors), ["src/x.rs:20"]);
+    assert!(grading::caught_sites(&task, DEFINITION, &[]).is_empty());
 }
 
 #[test]

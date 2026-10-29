@@ -449,6 +449,24 @@ fn new_file_implementing_an_interface_gets_its_overrides() {
 }
 
 #[test]
+fn class_property_implementing_an_interface_method_overrides_it() {
+    let Some(provisioner) = provisioner_for(Language::TypeScript) else {
+        return;
+    };
+    let (_temp, dir) = fixture_copy(&fixture("typescript/monorepo-basic"));
+    let mut session = Session::new(&dir, Registry::default());
+    session.write(
+        "packages/core/src/triangle.ts",
+        "import type { Shape } from \"./shapes\";\n\nfunction triangleArea(): number {\n  return 1;\n}\n\nexport class Triangle implements Shape {\n  readonly name = \"triangle\";\n  area: typeof triangleArea = triangleArea;\n}\n",
+    );
+    session.sync(&provisioner, SyncMode::Full);
+
+    let overrides = "packages/core/src/triangle.ts::Triangle::area (field)\toverrides\tpackages/core/src/shapes.ts::Shape::area (method)";
+    let edges = session.store.dump_edges().unwrap();
+    assert!(edges.contains(overrides), "{edges}");
+}
+
+#[test]
 fn method_added_to_a_trait_reaches_its_implementers() {
     let Some(provisioner) = provisioner_for(Language::Rust) else {
         return;

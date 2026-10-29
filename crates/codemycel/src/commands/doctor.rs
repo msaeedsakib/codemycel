@@ -212,7 +212,7 @@ fn fix(reason: DegradeReason, language: Language) -> String {
             "the server never became ready; check that the project builds, then run codemycel sync --full".to_owned()
         }
         DegradeReason::ToolchainMissing => {
-            "the root pins a toolchain (rust-toolchain.toml) that is not installed; run rustup toolchain install in the root's directory, then run codemycel sync --full".to_owned()
+            "cargo cannot run in the root's directory, typically because the root pins a toolchain (rust-toolchain.toml) that is not installed; run rustup toolchain install in the root's directory, or rustup default stable when no toolchain is pinned, then run codemycel sync --full".to_owned()
         }
         DegradeReason::Crashed => format!(
             "the server crashed; run codemycel sync --full, or set [servers.{language}] build_scripts = false for untrusted code"

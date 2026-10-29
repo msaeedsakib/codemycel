@@ -328,3 +328,40 @@ fn cargo_present_is_false_when_cargo_is_missing() {
     assert!(with_cargo.prerequisite_present(&adapter));
     assert!(stripped.prerequisite_present(&FileAdapter::default()));
 }
+
+#[cfg(unix)]
+#[test]
+fn cargo_without_a_default_toolchain_is_present_and_the_root_decides() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let bin = dir.path().join("bin");
+    let cargo = write(
+        &bin.join("cargo"),
+        b"#!/bin/sh\n[ -f rust-toolchain.toml ] && exit 0\n\
+          echo 'error: rustup could not choose a version of cargo to run' >&2\nexit 1\n",
+    );
+    std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let pinned = dir.path().join("pinned");
+    write(&pinned.join("rust-toolchain.toml"), b"");
+    let unpinned = dir.path().join("unpinned");
+    std::fs::create_dir_all(&unpinned).unwrap();
+    let adapter = FileAdapter {
+        toolchain: Some(Toolchain {
+            prerequisite: "cargo",
+            locate: &["rustup", "which", "file-server"],
+            install: &["rustup", "component", "add", "file-server"],
+        }),
+        ..FileAdapter::default()
+    };
+    let provisioner = provisioner(&config(None), dir.path(), Some(&bin), false);
+
+    assert!(provisioner.prerequisite_present(&adapter));
+    assert_eq!(provisioner.toolchain_missing(&adapter, &pinned), None);
+    assert_eq!(
+        provisioner
+            .toolchain_missing(&adapter, &unpinned)
+            .as_deref(),
+        Some("rustup could not choose a version of cargo to run")
+    );
+}
