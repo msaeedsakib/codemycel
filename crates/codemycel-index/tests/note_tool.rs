@@ -231,6 +231,15 @@ fn note_on_a_community_is_marked_derived() {
         .unwrap_or_else(|| panic!("{json}"));
     assert_eq!(target["path"], scope);
     assert_eq!(target["derived"], true);
+
+    let registry = Registry::default();
+    let engine = QueryEngine::open(&repo, store(&repo), registry.adapters());
+    let listed = engine.notes(None, false, Budget::new(2000)).unwrap();
+    let text = TextFormatter::render(&listed);
+    assert!(text.contains(&format!(" on derived:{scope} (")), "{text}");
+    let json = JsonFormatter::render(&listed);
+    assert_eq!(json["notes"][0]["target"], scope, "{json}");
+    assert_eq!(json["notes"][0]["derived"], true, "{json}");
 }
 
 #[test]

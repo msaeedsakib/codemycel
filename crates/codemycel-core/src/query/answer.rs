@@ -268,6 +268,9 @@ pub struct NoteLine {
     pub kind: NoteKind,
     /// The target as written; `repo` for the repository.
     pub target: String,
+    /// Set when the target is a community, which is computed, not verified.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub derived: bool,
     pub orphaned: bool,
     pub updated: String,
     pub body: String,
@@ -280,6 +283,7 @@ impl NoteLine {
             uuid: note.uuid.0.clone(),
             kind: note.kind,
             target: note.target_semantic_path.clone(),
+            derived: note.target_semantic_path.starts_with("community:"),
             orphaned: stored.orphaned,
             updated: note.updated.clone(),
             body: note.body.clone(),

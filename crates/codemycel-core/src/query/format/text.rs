@@ -79,7 +79,11 @@ impl TextFormatter {
                 line.line, line.col, line.role, line.text, line.reason
             ),
             Line::Note(note) => {
-                let mut out = format!("{indent}{} {} on {}", note.kind, note.uuid, note.target);
+                let prefix = if note.derived { "derived:" } else { "" };
+                let mut out = format!(
+                    "{indent}{} {} on {prefix}{}",
+                    note.kind, note.uuid, note.target
+                );
                 if note.orphaned {
                     out.push_str(" (orphaned)");
                 }
