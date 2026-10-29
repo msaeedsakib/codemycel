@@ -22,8 +22,8 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 pub use answer::{
-    Answer, Card, CardCounts, CardNote, CommunityRef, Direction, EdgeLine, Line, NodeLine,
-    NoteLine, Outcome, Section, SectionCount, SourceLine, Truncation, UnresolvedLine,
+    Answer, Card, CardCounts, CardNote, CommunityLine, CommunityRef, Direction, EdgeLine, Line,
+    NodeLine, NoteLine, Outcome, Section, SectionCount, SourceLine, Truncation, UnresolvedLine,
 };
 pub use budget::Budget;
 pub use card::SymbolCard;

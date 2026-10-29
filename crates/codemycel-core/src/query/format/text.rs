@@ -90,6 +90,17 @@ impl TextFormatter {
                 out
             }
             Line::Source(source) => format!("{indent}{:>4}  {}", source.line, source.text),
+            Line::Community(community) => {
+                let mut out = indent.to_owned();
+                if let Some(key) = &community.key {
+                    let _ = write!(out, "{key}  ");
+                }
+                out.push_str(&community.name());
+                if let Some(detail) = &community.detail {
+                    let _ = write!(out, "  {detail}");
+                }
+                out
+            }
             Line::Field { key, value } => format!("{indent}{key}  {value}"),
             Line::Text { text } => format!("{indent}{text}"),
         }

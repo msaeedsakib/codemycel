@@ -86,6 +86,7 @@ pub enum Line {
     Edge(EdgeLine),
     /// A node named in one line: lookup candidates, god nodes, a file's symbols.
     Node(NodeLine),
+    Community(CommunityLine),
     Unresolved(UnresolvedLine),
     Note(NoteLine),
     Source(SourceLine),
@@ -118,8 +119,41 @@ impl Line {
             Line::Edge(edge) => edge.node.file.iter().collect(),
             Line::Node(node) => node.file.iter().collect(),
             Line::Unresolved(line) => vec![&line.file],
-            Line::Note(_) | Line::Source(_) | Line::Field { .. } | Line::Text { .. } => Vec::new(),
+            Line::Community(_)
+            | Line::Note(_)
+            | Line::Source(_)
+            | Line::Field { .. }
+            | Line::Text { .. } => Vec::new(),
         }
+    }
+}
+
+/// A community in one line, `[key  ]derived:<label> (<path>)[  detail]` in text.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct CommunityLine {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    pub path: SemanticPath,
+    pub label: String,
+    /// Always set: communities are computed, not verified.
+    pub derived: bool,
+    pub detail: Option<String>,
+}
+
+impl CommunityLine {
+    pub fn new(path: SemanticPath, label: impl Into<String>) -> Self {
+        Self {
+            key: None,
+            path,
+            label: label.into(),
+            derived: true,
+            detail: None,
+        }
+    }
+
+    /// `derived:<label> (<path>)`.
+    pub fn name(&self) -> String {
+        format!("derived:{} ({})", self.label, self.path)
     }
 }
 

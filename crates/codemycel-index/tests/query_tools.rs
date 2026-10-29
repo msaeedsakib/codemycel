@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use codemycel_core::query::{Answer, Budget, QueryEngine, TextFormatter};
+use codemycel_core::query::{Answer, Budget, JsonFormatter, QueryEngine, TextFormatter};
 use codemycel_core::store::{Store, StoreRead, Tx};
 use codemycel_core::{
     ByteRange, Candidate, CandidateRole, Coverage, DegradeReason, Edge, EdgeKind, FileKind,
@@ -737,6 +737,50 @@ members:
 index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
+}
+
+#[test]
+fn overview_json_marks_every_community_derived() {
+    let Some(index) = verified() else {
+        return;
+    };
+    let index = index.lock().unwrap();
+    let (_, copy, index) = &*index;
+    let registry = Registry::default();
+    let engine = index.engine(copy, registry.adapters());
+    let render = |scope: Option<&str>| {
+        JsonFormatter::render(&engine.overview(scope, Budget::new(4000)).unwrap())
+    };
+    let communities = |json: &serde_json::Value, section: &str| -> Vec<serde_json::Value> {
+        json[section]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["type"] == "community")
+            .cloned()
+            .collect()
+    };
+    let repo = render(None);
+    let directory = render(Some("crates/cli/"));
+    let community = render(Some("community:1b29ae35"));
+    for (json, section, count) in [
+        (&repo, "communities", 8),
+        (&directory, "communities", 4),
+        (&community, "overview", 1),
+        (&community, "inbound", 1),
+        (&community, "outbound", 1),
+    ] {
+        let items = communities(json, section);
+        assert_eq!(items.len(), count, "{section}: {json}");
+        for item in items {
+            assert_eq!(item["derived"], true, "{item}");
+            assert!(
+                item["label"].is_string() && item["path"].is_string(),
+                "{item}"
+            );
+        }
+    }
+    assert_eq!(repo["communities"].as_array().unwrap().len(), 8);
 }
 
 #[test]
