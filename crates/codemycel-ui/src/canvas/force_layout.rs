@@ -63,7 +63,9 @@ pub struct Link {
 const MAX_ITERATIONS: usize = 600;
 const SETTLED: f64 = 0.05;
 const GAP: f64 = 6.0;
-const GRAVITY: f64 = 0.04;
+const GRAVITY: f64 = 0.06;
+/// Beyond this many ideal distances, circles stop repelling, so unlinked ones stay near.
+const REACH: f64 = 2.0;
 const MAX_ZOOM: f64 = 3.0;
 
 /// Positions for circles of `radii` joined by `links`, inside `viewport`. A force simulation
@@ -97,15 +99,12 @@ pub fn force_layout(radii: &[f64], links: &[Link], viewport: Viewport, seed: u64
     let spread = inner_width.min(inner_height) / 3.0;
     let mut positions: Vec<Point> = radii
         .iter()
-        .map(|&radius| {
+        .map(|_| {
             let angle = random.next_unit() * std::f64::consts::TAU;
             let distance = random.next_unit().sqrt() * spread;
-            viewport.clamp(
-                Point::new(
-                    center.x + distance * angle.cos(),
-                    center.y + distance * angle.sin(),
-                ),
-                radius,
+            Point::new(
+                center.x + distance * angle.cos(),
+                center.y + distance * angle.sin(),
             )
         })
         .collect();
@@ -123,7 +122,11 @@ pub fn force_layout(radii: &[f64], links: &[Link], viewport: Viewport, seed: u64
                 let dy = positions[a].y - positions[b].y;
                 let distance = dx.hypot(dy).max(0.01);
                 let clearance = (distance - radii[a] - radii[b]).max(0.5);
-                let mut push = ideal * ideal / clearance / distance;
+                let mut push = if clearance < REACH * ideal {
+                    ideal * ideal / clearance / distance
+                } else {
+                    0.0
+                };
                 if clearance < GAP {
                     push += (GAP - clearance) * 2.0 / distance;
                 }
@@ -160,12 +163,9 @@ pub fn force_layout(radii: &[f64], links: &[Link], viewport: Viewport, seed: u64
                 continue;
             }
             let step = magnitude.min(temperature);
-            let moved = viewport.clamp(
-                Point::new(
-                    position.x + force.x / magnitude * step,
-                    position.y + force.y / magnitude * step,
-                ),
-                radii[index],
+            let moved = Point::new(
+                position.x + force.x / magnitude * step,
+                position.y + force.y / magnitude * step,
             );
             largest = largest.max(moved.distance(*position));
             *position = moved;
@@ -179,28 +179,35 @@ pub fn force_layout(radii: &[f64], links: &[Link], viewport: Viewport, seed: u64
     positions
 }
 
-/// Scales and centres `positions` to use the viewport, then clamps each circle inside it.
+/// Centres the circles and scales their distances by the largest factor that keeps every
+/// circle inside the viewport, then clamps each circle inside it.
 fn fit(positions: &mut [Point], radii: &[f64], viewport: Viewport) {
-    let largest = radii.iter().copied().fold(0.0_f64, f64::max);
     let (mut min, mut max) = (
         Point::new(f64::INFINITY, f64::INFINITY),
         Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY),
     );
-    for point in positions.iter() {
-        min = Point::new(min.x.min(point.x), min.y.min(point.y));
-        max = Point::new(max.x.max(point.x), max.y.max(point.y));
+    for (point, &radius) in positions.iter().zip(radii) {
+        min = Point::new(min.x.min(point.x - radius), min.y.min(point.y - radius));
+        max = Point::new(max.x.max(point.x + radius), max.y.max(point.y + radius));
     }
-    let available_x = viewport.width - 2.0 * (viewport.padding + largest);
-    let available_y = viewport.height - 2.0 * (viewport.padding + largest);
-    let span_x = max.x - min.x;
-    let span_y = max.y - min.y;
-    let scale = [(available_x, span_x), (available_y, span_y)]
-        .iter()
-        .filter(|(_, span)| *span > 1.0)
-        .map(|(available, span)| available / span)
-        .fold(MAX_ZOOM, f64::min)
-        .max(0.0);
     let middle = Point::new((min.x + max.x) / 2.0, (min.y + max.y) / 2.0);
+    let half_width = viewport.width / 2.0 - viewport.padding;
+    let half_height = viewport.height / 2.0 - viewport.padding;
+    let limit = |room: f64, offset: f64| {
+        if offset.abs() > 1e-9 {
+            (room / offset.abs()).max(0.0)
+        } else {
+            MAX_ZOOM
+        }
+    };
+    let scale = positions
+        .iter()
+        .zip(radii)
+        .map(|(point, &radius)| {
+            limit(half_width - radius, point.x - middle.x)
+                .min(limit(half_height - radius, point.y - middle.y))
+        })
+        .fold(MAX_ZOOM, f64::min);
     let center = viewport.center();
     for (point, &radius) in positions.iter_mut().zip(radii) {
         *point = viewport.clamp(
