@@ -2,6 +2,9 @@
 target/
 **/*.rs.bk
 
+# Web view bundle, built by scripts/build-ui.sh
+/crates/codemycel-ui/dist/
+
 # codemycel's own index when dogfooding
 /.codemycel/
 
