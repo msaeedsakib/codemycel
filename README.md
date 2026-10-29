@@ -4,7 +4,7 @@ A persistent, LSP-verified knowledge graph of your codebase, for coding agents.
 
 codemycel builds a graph of your repository: which function calls which, what implements a trait or interface, what breaks if a signature changes. It hands that graph to your coding agent over MCP, to your shell as CLI commands, and to you as a local web view. Tree-sitter finds the structure. Every cross-file edge is then verified by a language server (rust-analyzer, TypeScript 7) or by a SCIP index. When an edge can't be verified, it is counted as unresolved and never guessed. The graph lives in `.codemycel/` inside the repository, so it outlasts any one agent session.
 
-> **Status: pre-release.** No version has been published yet. The installer below works once the first release is out. The before/after evaluation is in `eval/`, and its results will be published with the first release.
+> **Status: experimental.** This is an experiment. I built it to find out whether a verified code graph makes coding agents better and cheaper, then benchmarked it against three similar tools and against plain Claude Code. What I found is below in [What the benchmark showed](#what-the-benchmark-showed). In short: a graph like this gives an agent more complete knowledge of a codebase (callers and implementations it would otherwise miss), and that matters more the bigger the codebase. It does not make agents meaningfully cheaper, and it cannot beat plain grep on ordinary lookups. v0.1.0 is published as it stands; I don't plan to develop it further.
 
 ## Install
 
@@ -115,9 +115,26 @@ The web view binds `127.0.0.1` only and is read-only. `note` is the only tool th
 - `notes/` is knowledge: plain Markdown files your agents wrote. Commit it if you want the notes shared.
 - `config.toml` holds optional settings (ignores, roots, server paths).
 
-## Evaluation
+## What the benchmark showed
 
-`eval/` holds a reproducible before/after evaluation: ten caller, impact and orientation tasks on [honojs/hono](https://github.com/honojs/hono) and [irixsoft/irixmail](https://github.com/irixsoft/irixmail), each run with and without codemycel through Claude Code. `eval/README.md` explains how to run it. Results will be published here with the first release.
+`eval/` holds the benchmark. It asks Claude Code (Sonnet, `--bare`, three cold sessions per task) 18 questions on four public repositories: [honojs/hono](https://github.com/honojs/hono), [irixsoft/irixmail](https://github.com/irixsoft/irixmail), [rust-lang/rust-analyzer](https://github.com/rust-lang/rust-analyzer) and [nestjs/nest](https://github.com/nestjs/nest). There are 9 orientation questions ("how does a request reach X"), 7 impact questions ("who calls X, what implements it, what breaks"), and 2 edits ("add a parameter and update every caller"). Each question runs with no tool, with codemycel, and with [GitNexus](https://github.com/abhigyanpatwari/GitNexus), [Serena](https://github.com/oraios/serena) and [CodeGraph](https://github.com/colbymchenry/codegraph), each set up the way its own docs say. Answers are graded blind by Claude Opus against checklists built from language-server references. Edits are graded by the compiler alone. The full table is in [`eval/RESULTS.md`](eval/RESULTS.md).
+
+| Mode | Total tokens (median per task, summed) | Uncached tokens | Cost | Correctness | Completeness |
+|---|---:|---:|---:|---:|---:|
+| Plain Claude Code | 446k | 151k | $0.57 | 93 | 93 |
+| codemycel | 596k | 130k | $0.50 | 92 | 94 |
+| GitNexus | 1,216k | 180k | $0.70 | 89 | 89 |
+| Serena | 503k | 152k | $0.59 | 93 | 93 |
+| CodeGraph | 579k | 175k | $0.61 | 92 | 95 |
+
+What I take from it:
+
+- **None of the four tools beats plain grep on tokens.** On repositories of 500 to 2,000 files, with questions that name the symbol, Claude finds the answer in a few greps. A graph tool adds its tool definitions and results to every turn. codemycel uses the fewest uncached tokens and is about 11% cheaper in dollars than plain Claude Code, but its total token count is higher, and so is every other tool's. The savings are real but small.
+- **The one place a graph clearly helps is completeness when dispatch hides a caller or an implementation.** On rust-analyzer, asked for every implementation and trait-object call of `ProcMacroExpander::expand`, codemycel scored 98/100. Every other mode, plain Claude Code included, reached at most 79 completeness. On a multi-crate edit in irixmail ("give `enqueue` a new parameter and update every caller"), codemycel, Serena and CodeGraph scored 100. Plain Claude Code scored 67, because some runs missed call sites and broke the build. This is the knowledge a graph adds, and it matters more as a codebase grows.
+- **On orientation questions, plain grep is as good or better.** No tool improved them.
+- **Harnesses are closing the gap themselves.** Claude Code and other agents already ship language-server integrations, which give the model the same verified callers and implementations without a separate index. My guess is that they cover most of what this kind of tool offers. The benchmark ran with them off (`--bare`), so this is my view, not a measurement.
+
+`eval/README.md` explains how to reproduce the benchmark.
 
 ## License
 

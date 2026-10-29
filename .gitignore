@@ -11,3 +11,6 @@ target/
 # Editors / OS
 .DS_Store
 *.swp
+
+# Raw eval logs, written by eval/run.sh
+/eval/logs/
