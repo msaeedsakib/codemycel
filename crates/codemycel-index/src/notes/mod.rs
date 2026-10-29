@@ -6,9 +6,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use codemycel_core::store::{NoteTarget, Store, StoreRead, StoredNote, Tx};
-use codemycel_core::{NodeKind, NodeRef, Note, NoteId, SemanticPath};
+use codemycel_core::{NodeKind, NodeRef, Note, NoteId, NoteKind, SemanticPath};
 
-use crate::IndexError;
+use crate::{IndexError, communities};
 
 /// The target of a note on the repository as a whole. It names no node, so such a note has no
 /// `annotates` edge and is never orphaned.
@@ -61,7 +61,8 @@ impl NotesReconciler {
     }
 
     /// Writes the note's file, creating the notes directory if needed, then upserts its row and
-    /// attaches it in one transaction, for the `note` tool. The note must survive being read back
+    /// attaches it in one transaction, for the `note` tool. A `label` note on a community relabels
+    /// it in that transaction, as the next sync would. The note must survive being read back
     /// from its file: a canonical uuid, and RFC 3339 `created` and `updated` times.
     pub fn write(store: &mut Store, notes_dir: &Path, note: Note) -> Result<NoteId, IndexError> {
         let path = notes_dir.join(files::file_name(&note.uuid));
@@ -91,8 +92,15 @@ impl NotesReconciler {
         std::fs::rename(&partial, &path).map_err(io_error(&path))?;
         store.transaction(|tx| {
             tx.upsert_note(&note)?;
-            if let Some(stored) = tx.note_by_uuid(&note.uuid)? {
-                attach_one(tx, &stored)?;
+            let Some(stored) = tx.note_by_uuid(&note.uuid)? else {
+                return Ok(());
+            };
+            if let Target::Node(target) = attach_one(tx, &stored)?
+                && note.kind == NoteKind::Label
+                && target.kind == NodeKind::Community
+                && let Some(id) = target.path.as_str().strip_prefix("community:")
+            {
+                communities::apply_label_notes(tx, id)?;
             }
             Ok::<_, IndexError>(())
         })?;
@@ -179,12 +187,13 @@ fn precedence(kind: NodeKind) -> usize {
     }
 }
 
-fn attach_one(tx: &mut Tx<'_>, stored: &StoredNote) -> Result<(), IndexError> {
+fn attach_one(tx: &mut Tx<'_>, stored: &StoredNote) -> Result<Target, IndexError> {
     let uuid = &stored.note.uuid;
-    match resolve(tx, &stored.note.target_semantic_path)? {
+    let target = resolve(tx, &stored.note.target_semantic_path)?;
+    match &target {
         Target::Node(node) => {
-            if stored.orphaned || stored.target.as_ref() != Some(&node) {
-                tx.set_note_target(uuid, NoteTarget::Node(&node))?;
+            if stored.orphaned || stored.target.as_ref() != Some(node) {
+                tx.set_note_target(uuid, NoteTarget::Node(node))?;
             }
         }
         Target::Repository => {
@@ -198,5 +207,5 @@ fn attach_one(tx: &mut Tx<'_>, stored: &StoredNote) -> Result<(), IndexError> {
             }
         }
     }
-    Ok(())
+    Ok(target)
 }
