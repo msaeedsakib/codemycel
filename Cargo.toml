@@ -80,3 +80,7 @@ unsafe_code = "deny"
 
 [workspace.lints.clippy]
 unwrap_used = "deny"
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
