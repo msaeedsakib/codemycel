@@ -47,6 +47,16 @@ jobs:
         run: cargo test --workspace --locked -- --ignored downloads_and_validates
       - run: cargo test --workspace --locked
 
+  network-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: allow unprivileged user namespaces for unshare -rn
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: cargo test -p codemycel --locked --test no_telemetry
+
   lint:
     runs-on: ubuntu-24.04
     steps:

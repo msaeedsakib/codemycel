@@ -18,3 +18,5 @@ windows-archive = ".zip"
 checksum = "sha256"
 features = ["ui-bundle"]
 github-build-setup = "../build-setup.yml"
+global-artifacts-jobs = ["./clean-machine"]
+pr-run-mode = "upload"
