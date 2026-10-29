@@ -126,6 +126,15 @@ impl CommunityDetector {
     }
 }
 
+/// Gives the stored community `stable_id` the label its `label` notes give it, the one the next
+/// sync would; leaves it as it is when they give none.
+pub(crate) fn apply_label_notes(tx: &mut Tx<'_>, stable_id: &str) -> Result<(), IndexError> {
+    if let Some(label) = label_notes(tx)?.get(stable_id) {
+        tx.set_community_label(stable_id, label, LabelSource::Note)?;
+    }
+    Ok(())
+}
+
 /// The label each community's `label` notes give it, by stable id: the first non-blank line of
 /// the most recently updated note, ties going to the greater uuid.
 fn label_notes(tx: &Tx<'_>) -> Result<BTreeMap<String, String>, IndexError> {

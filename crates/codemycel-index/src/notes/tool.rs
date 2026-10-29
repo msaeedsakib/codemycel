@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use codemycel_core::config::paths::{REPO_DIR_NAME, notes_dir};
-use codemycel_core::query::{Answer, Budget, Line, Outcome, QueryEngine, QueryError, Section};
+use codemycel_core::query::{
+    Answer, Budget, Line, NodeLine, Outcome, QueryEngine, QueryError, Section,
+};
 use codemycel_core::store::{Store, StoreRead};
 use codemycel_core::{LanguageAdapter, NodeKind, Note, NoteId, NoteKind};
 
@@ -46,7 +48,10 @@ impl NoteTool {
         }
         let target = request.target.trim();
         let (target, shown) = if target == REPOSITORY_TARGET {
-            (REPOSITORY_TARGET.to_owned(), REPOSITORY_TARGET.to_owned())
+            (
+                REPOSITORY_TARGET.to_owned(),
+                Line::field("target", REPOSITORY_TARGET),
+            )
         } else {
             match engine.lookup(target, budget).map_err(query_error)? {
                 Ok(node) if node.node.kind == NodeKind::Note => {
@@ -57,7 +62,7 @@ impl NoteTool {
                         )
                         .map_err(query_error);
                 }
-                Ok(node) => (node.node.path.to_string(), node.node.node_ref().to_string()),
+                Ok(node) => (node.node.path.to_string(), Line::Node(NodeLine::of(&node))),
                 Err(answer) => return Ok(answer),
             }
         };
@@ -86,7 +91,7 @@ impl NoteTool {
         };
         let mut store = Store::open(&db, false)?;
         let uuid = NotesReconciler::write(&mut store, &notes_dir(repo_root), note)?;
-        let lines = vec![Line::field("uuid", &uuid.0), Line::field("target", shown)];
+        let lines = vec![Line::field("uuid", &uuid.0), shown];
         let section = Section::new("note", 0, lines).without_header();
         engine
             .finish(Outcome::Ok, vec![section], budget, "")

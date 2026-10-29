@@ -7,10 +7,14 @@ use std::path::{Path, PathBuf};
 use codemycel_core::config::Config;
 use codemycel_core::config::paths::notes_dir;
 use codemycel_core::query::symbol::SymbolOptions;
-use codemycel_core::query::{Answer, Budget, Outcome, QueryEngine, TextFormatter};
+use codemycel_core::query::{Answer, Budget, JsonFormatter, Outcome, QueryEngine, TextFormatter};
 use codemycel_core::store::{Store, StoreRead};
-use codemycel_core::{Note, NoteId, NoteKind};
-use codemycel_index::{NoteRequest, NoteTool, NotesReconciler, Pipeline, Registry};
+use codemycel_core::{
+    Edge, EdgeKind, LabelSource, NodeKind, NodeRef, Note, NoteId, NoteKind, Occurrence, VerifiedBy,
+};
+use codemycel_index::{
+    CommunityDetector, NoteRequest, NoteTool, NotesReconciler, Pipeline, Registry,
+};
 use harness::{fixture, fixture_copy};
 use tempfile::TempDir;
 
@@ -64,7 +68,7 @@ fn note_write_creates_file_and_card_entry() {
     assert_eq!(
         TextFormatter::render(&answer).replace(&uuid, "<uuid>"),
         "uuid  <uuid>
-target  crates/core/src/geometry.rs::sides (function)
+crates/core/src/geometry.rs::sides (function) crates/core/src/geometry.rs:54  pub fn sides(shape: &Shape) -> u32
 index: no git (0 files changed since) · coverage: rust not verified
 "
     );
@@ -122,6 +126,111 @@ fn note_write_replace_keeps_created_and_bumps_updated() {
     assert_eq!(second.note.body, "Second.");
     assert_eq!(second.note.target_semantic_path, "crates/core/src/lib.rs");
     assert_eq!(store(&repo).notes().unwrap().len(), 1);
+}
+
+/// Joins `sides` and `config` with a verified call and detects communities, as the end of a sync
+/// does; returns the stable id of the one community they form.
+fn community_of_sides_and_config(repo: &Path) -> String {
+    let function = |path: &str| NodeRef::new(path.parse().unwrap(), NodeKind::Function);
+    let call = Edge {
+        src: function("crates/cli/src/main.rs::config"),
+        dst: function(SIDES),
+        kind: EdgeKind::Calls,
+        verified_by: VerifiedBy::Lsp,
+        occurrences: vec![Occurrence { line: 1, col: 1 }],
+    };
+    let mut writable = Store::open(&repo.join(".codemycel/index.db"), false).unwrap();
+    writable
+        .transaction(|tx| {
+            tx.insert_edges(&[call])?;
+            CommunityDetector::run(tx, &[])
+        })
+        .unwrap();
+    let communities = writable.communities().unwrap();
+    assert_eq!(communities.len(), 1);
+    communities[0].stable_id.clone()
+}
+
+fn label(repo: &Path, target: &str, body: &str, replace: Option<&str>) -> Answer {
+    let request = NoteRequest {
+        target,
+        body,
+        kind: NoteKind::Label,
+        replace,
+    };
+    NoteTool::write(repo, &request, false, Budget::new(500)).unwrap()
+}
+
+fn overview_head(repo: &Path, scope: &str) -> String {
+    let registry = Registry::default();
+    let engine = QueryEngine::open(repo, store(repo), registry.adapters());
+    let text = TextFormatter::render(&engine.overview(Some(scope), Budget::new(4000)).unwrap());
+    text.lines().next().unwrap().to_owned()
+}
+
+#[test]
+fn label_note_relabels_its_community_before_any_sync() {
+    let (_temp, repo) = indexed();
+    let id = community_of_sides_and_config(&repo);
+    let scope = format!("community:{id}");
+    assert_eq!(
+        overview_head(&repo, &scope),
+        format!("community  derived:cluster-{id} ({scope})")
+    );
+
+    let uuid = uuid_of(&label(&repo, &scope, "\n  geometry  \nwhy\n", None));
+    assert_eq!(
+        overview_head(&repo, &scope),
+        format!("community  derived:geometry ({scope})")
+    );
+
+    label(&repo, &scope, "shapes", Some(&uuid));
+    assert_eq!(
+        overview_head(&repo, &scope),
+        format!("community  derived:shapes ({scope})")
+    );
+    let relabelled = store(&repo).communities().unwrap();
+
+    let mut writable = Store::open(&repo.join(".codemycel/index.db"), false).unwrap();
+    let notes = notes_dir(&repo);
+    writable
+        .transaction(|tx| {
+            NotesReconciler::load(tx, &notes)?;
+            CommunityDetector::run(tx, &relabelled)?;
+            NotesReconciler::attach(tx)
+        })
+        .unwrap();
+    let synced = writable.communities().unwrap();
+    assert_eq!(synced, relabelled);
+    assert_eq!(synced[0].label, "shapes");
+    assert_eq!(synced[0].label_source, LabelSource::Note);
+    assert_eq!(
+        overview_head(&repo, &scope),
+        format!("community  derived:shapes ({scope})")
+    );
+}
+
+#[test]
+fn note_on_a_community_is_marked_derived() {
+    let (_temp, repo) = indexed();
+    let id = community_of_sides_and_config(&repo);
+    let scope = format!("community:{id}");
+    let answer = note(&repo, &scope, "Mostly shapes.", None);
+
+    let text = TextFormatter::render(&answer);
+    assert!(
+        text.contains(&format!("\nderived:{scope} (community)\n")),
+        "{text}"
+    );
+    let json = JsonFormatter::render(&answer);
+    let target = json["note"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|line| line["type"] == "node")
+        .unwrap_or_else(|| panic!("{json}"));
+    assert_eq!(target["path"], scope);
+    assert_eq!(target["derived"], true);
 }
 
 #[test]

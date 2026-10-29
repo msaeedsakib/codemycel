@@ -7,9 +7,9 @@ use super::read::{file_key, node_key};
 use super::{NoteTarget, StoreError, Tx};
 use crate::text::name_split;
 use crate::{
-    Community, Edge, EdgeKind, FileId, FileRecord, ImplRecord, Node, NodeId, NodeKind, NodeRef,
-    Note, NoteId, Occurrence, Package, RepoPath, Root, RootId, RootStatus, SearchDoc, SemanticPath,
-    Unresolved, VerifiedBy,
+    Community, Edge, EdgeKind, FileId, FileRecord, ImplRecord, LabelSource, Node, NodeId, NodeKind,
+    NodeRef, Note, NoteId, Occurrence, Package, RepoPath, Root, RootId, RootStatus, SearchDoc,
+    SemanticPath, Unresolved, VerifiedBy,
 };
 
 impl Tx<'_> {
@@ -493,6 +493,26 @@ impl Tx<'_> {
                 )?;
             }
         }
+        Ok(())
+    }
+
+    /// Sets the label of the community with `stable_id` on its row and as its node's name;
+    /// does nothing when there is no such community.
+    pub fn set_community_label(
+        &mut self,
+        stable_id: &str,
+        label: &str,
+        label_source: LabelSource,
+    ) -> Result<()> {
+        self.tx.execute(
+            "UPDATE communities SET label = ?2, label_source = ?3 WHERE stable_id = ?1",
+            params![stable_id, label, label_source],
+        )?;
+        self.tx.execute(
+            "UPDATE nodes SET name = ?2
+             WHERE id = (SELECT node_id FROM communities WHERE stable_id = ?1)",
+            params![stable_id, label],
+        )?;
         Ok(())
     }
 
