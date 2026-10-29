@@ -187,7 +187,7 @@ depth 1:
   ← references  crates/core/src/geometry.rs::Circle::center (field) L12 [L12]
 depth 2:
   ← calls  crates/core/src/circle.rs::Circle::scaled (method) L8 [L10]
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
 }
@@ -419,7 +419,7 @@ fn trace_finds_shortest_path_and_reports_nearest_when_none() {
   crates/cli/src/main.rs::main (function) crates/cli/src/main.rs:24  fn main()
   → calls  crates/core/src/geometry.rs::Area::describe (method) L27 [L26]
   → calls  crates/core/src/geometry.rs::Area::area (method) L23 [L28]
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
     let none = on_fixture(|engine| {
@@ -447,7 +447,7 @@ nearest:
   crates/core/src/lib.rs::MAX_SHAPES (constant) crates/core/src/lib.rs:11  pub const MAX_SHAPES: usize
   crates/core/src/geometry.rs::Circle (struct) crates/core/src/geometry.rs:11  pub struct Circle
   crates/core/src/geometry.rs::Area (trait) crates/core/src/geometry.rs:22  pub trait Area
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
 }
@@ -490,7 +490,7 @@ communities:
   derived:core (community:6a326ce4)  3 members · top: Store::load, <MemoryStore as Store>::load, Store::exists
   derived:cluster-d2f236e4 (community:d2f236e4)  2 members · top: MemoryStore, Store
   derived:core (community:d23a0031)  2 members · top: layout::grid::columns, layout::total_columns
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
 }
@@ -587,7 +587,7 @@ importers:
   ← imports  crates/cli/src/main.rs (file) L1 [L3, L4]
   ← imports  crates/core/src/circle.rs (file) L1 [L1]
   ← imports  crates/core/src/render.rs (file) L1 [L1]
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
     let circle = on_fixture(|engine| {
@@ -612,7 +612,7 @@ symbols:
     callers 0 · callees 1 · impls 0 · overrides 0 · unresolved 1 · external 0
 imports:
   → imports  crates/core/src/geometry.rs (file) L1 [L1]
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
 }
@@ -645,7 +645,7 @@ communities:
   derived:core (community:074a7a48)  2 members here
   derived:cluster-d2f236e4 (community:d2f236e4)  1 member here
   derived:core (community:6a326ce4)  1 member here
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
     let package = on_fixture(|engine| {
@@ -687,7 +687,7 @@ members:
   crates/core/src/circle.rs::Circle::scaled (method) crates/core/src/circle.rs:8  pub fn scaled(&self, factor: f64) -> Circle
   crates/core/src/geometry.rs::Point (struct) crates/core/src/geometry.rs:6  pub struct Point
   crates/core/src/geometry.rs::Circle (struct) crates/core/src/geometry.rs:11  pub struct Circle
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
 }
@@ -714,7 +714,7 @@ files:
   crates/core/src/store.rs  4
   crates/core/src/render.rs  3
   crates/core/src/circle.rs  1
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
     let in_file = on_fixture(|engine| {
@@ -732,7 +732,7 @@ index: no git (11 files changed since) · coverage: rust lsp ✓
   L30:20 call  iter  (external_dependency)
   L30:27 call  fold  (external_dependency)
   L33:28 call  parse  (external_dependency)
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
     let unmapped = on_fixture(|engine| {
@@ -749,7 +749,7 @@ roots:
   . (rust)  1 · unmapped 1
 files:
   crates/core/src/circle.rs  1
-index: no git (11 files changed since) · coverage: rust lsp ✓
+index: no git (0 files changed since) · coverage: rust lsp ✓
 "
     );
 }
@@ -762,7 +762,7 @@ fn notes_snapshot_on_rust_fixture() {
     };
     assert_eq!(
         text,
-        "no notes\nindex: no git (11 files changed since) · coverage: rust lsp ✓\n"
+        "no notes\nindex: no git (0 files changed since) · coverage: rust lsp ✓\n"
     );
 }
 
@@ -801,7 +801,7 @@ counts:
   unresolved  external_dependency 51 · unmapped 1
 skipped:
   index.scip  binary
-index: no git (11 files changed since) · coverage: rust lsp ✓"
+index: no git (0 files changed since) · coverage: rust lsp ✓"
     );
 }
 

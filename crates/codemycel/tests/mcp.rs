@@ -238,6 +238,60 @@ fn mentions_alpha(text: &str) -> bool {
     text.contains("src/lib.rs::alpha")
 }
 
+/// The CLI's stdout for `args` in the sandbox, run like the server.
+fn cli(sandbox: &Sandbox, args: &[&str]) -> String {
+    let output = cargo_bin_cmd!("codemycel")
+        .args(args)
+        .current_dir(&sandbox.repo)
+        .env("CODEMYCEL_HOME", &sandbox.home)
+        .env("CODEMYCEL_NO_UPDATE_CHECK", "1")
+        .env("PATH", &sandbox.empty_path)
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn mcp_cli_text_and_json_agree() {
+    let sandbox = Sandbox::new();
+    sandbox.write("src/main.rs", "fn main() {\n    tiny::alpha();\n}\n");
+    sandbox.init();
+    let mut client = sandbox.mcp();
+    client.call_until("search", &arguments("search"), mentions_alpha);
+    let cases: [(&str, &[&str]); 7] = [
+        ("search", &["search", "alpha"]),
+        ("symbol", &["symbol", "alpha"]),
+        ("impact", &["impact", "alpha"]),
+        ("trace", &["trace", "alpha", "alpha"]),
+        ("overview", &["overview"]),
+        ("unresolved", &["unresolved"]),
+        ("notes", &["notes"]),
+    ];
+    for (tool, args) in cases {
+        let over_mcp = client.call(tool, arguments(tool));
+        let text = cli(&sandbox, args);
+        assert_eq!(over_mcp, text, "{tool}: MCP and CLI text differ");
+        let mut json_args = args.to_vec();
+        json_args.push("--json");
+        let json: Value = serde_json::from_str(&cli(&sandbox, &json_args)).unwrap();
+        let headers = text
+            .lines()
+            .filter(|line| !line.starts_with(' '))
+            .filter_map(|line| line.strip_suffix(':'));
+        for header in headers {
+            assert!(json[header].is_array(), "{tool}: no `{header}` in {json}");
+        }
+        let footer = text.lines().last().unwrap();
+        let commit = json["freshness"]["indexed_commit"]
+            .as_str()
+            .unwrap_or("no git");
+        assert!(
+            footer.starts_with(&format!("index: {}", &commit[..commit.len().min(7)])),
+            "{tool}: {footer}"
+        );
+    }
+}
+
 #[test]
 fn initialize_returns_verbatim_instructions() {
     let sandbox = Sandbox::new();

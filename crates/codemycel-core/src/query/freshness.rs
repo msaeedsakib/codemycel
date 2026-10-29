@@ -12,7 +12,7 @@ pub struct Freshness {
     /// Git HEAD at the last sync; `None` without git.
     pub indexed_commit: Option<String>,
     pub indexed_at: Option<String>,
-    /// The answer's stale files plus the files the last sync changed.
+    /// How many files in this answer changed since indexing; `status` counts the whole tree.
     pub changed_files: u64,
     pub coverage: Vec<LanguageCoverage>,
     /// Files in this answer whose content differs from the indexed content, or that are gone.
@@ -58,10 +58,6 @@ impl Freshness {
                 stale.push(path.clone());
             }
         }
-        let last_sync: u64 = store
-            .meta_get(meta::LAST_SYNC_CHANGED_FILES)?
-            .and_then(|count| count.parse().ok())
-            .unwrap_or(0);
         let mut by_language: BTreeMap<Language, BTreeSet<CoverageState>> = BTreeMap::new();
         for root in store.roots()? {
             let state = match root.status {
@@ -81,7 +77,7 @@ impl Freshness {
         Ok(Self {
             indexed_commit: store.meta_get(meta::INDEXED_COMMIT)?,
             indexed_at: store.meta_get(meta::INDEXED_AT)?,
-            changed_files: last_sync + stale.len() as u64,
+            changed_files: stale.len() as u64,
             coverage: by_language
                 .into_iter()
                 .map(|(language, states)| LanguageCoverage {

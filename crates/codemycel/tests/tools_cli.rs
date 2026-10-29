@@ -72,7 +72,6 @@ fn each_tool_subcommand_renders_text_and_json() {
 }
 
 #[test]
-#[ignore = "needs Task 4 (PR B)"]
 fn each_remaining_tool_subcommand_renders_text_and_json() {
     assert_renders(
         &["impact", "crates/core/src/geometry.rs::Area::area"],
