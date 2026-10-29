@@ -95,18 +95,18 @@ impl QueryEngine<'_> {
             .collect()
     }
 
-    /// Direct callers, then callers of the parents `node` overrides or implements that are not
-    /// already direct callers.
+    /// Direct callers, then the callers of the parents `node` overrides or implements and of the
+    /// members that override it, each listed once.
     fn callers(&self, node: &StoredNode) -> Result<Vec<Line>> {
         let direct = self.store().edges_to(node.id, &[EdgeKind::Calls])?;
-        let seen: BTreeSet<_> = direct.iter().map(|edge| edge.src_id).collect();
+        let mut seen: BTreeSet<_> = direct.iter().map(|edge| edge.src_id).collect();
         let mut lines = self.lines(&direct, Direction::In)?;
-        for (edge, parent) in self.dispatch_expanded(node, &[EdgeKind::Calls])? {
-            if !seen.contains(&edge.src_id) {
+        for (edge, through) in self.dispatch_expanded(node, &[EdgeKind::Calls])? {
+            if seen.insert(edge.src_id) {
                 lines.push(Line::Edge(self.edge_line(
                     &edge,
                     Direction::In,
-                    Some(parent),
+                    Some(through),
                 )?));
             }
         }
