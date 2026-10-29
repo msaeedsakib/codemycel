@@ -1,0 +1,76 @@
+# Tasks run against rust-lang/rust-analyzer at the commit pinned in eval/README.md.
+# `expected` describes a correct answer's shape so a reader can judge the logged answers.
+
+[[task]]
+id = "hover-orientation"
+kind = "orientation"
+prompt = """How does an LSP `textDocument/hover` request reach the code that computes the hover \
+text in this repository? Name the files and functions on the path, from the main loop's request \
+dispatch to where the hover content is built. Answer in at most 15 lines; do not modify any file."""
+expected = """`GlobalState::on_request` in crates/rust-analyzer/src/main_loop.rs registers \
+`handlers::handle_hover` through the `RequestDispatcher` (crates/rust-analyzer/src/handlers/dispatch.rs), \
+which runs it on a worker thread. `handle_hover` in crates/rust-analyzer/src/handlers/request.rs calls \
+`Analysis::hover` (crates/ide/src/lib.rs), which calls `hover::hover` in crates/ide/src/hover.rs. That \
+goes through `hover_offset` (or `hover_ranged` for a range) to `hover_for_definition` and the render \
+functions in crates/ide/src/hover/render.rs. The result is converted back with `to_proto`."""
+items = [
+    "`GlobalState::on_request` in crates/rust-analyzer/src/main_loop.rs registers the hover handler",
+    "`RequestDispatcher` in crates/rust-analyzer/src/handlers/dispatch.rs dispatches it",
+    "`handle_hover` in crates/rust-analyzer/src/handlers/request.rs",
+    "`Analysis::hover` in crates/ide/src/lib.rs",
+    "`hover::hover` in crates/ide/src/hover.rs",
+    "`hover_offset` (or `hover_ranged` for a range)",
+    "`hover_for_definition` or the render functions in crates/ide/src/hover/render.rs build the content",
+    "the result converted back to LSP types with `to_proto`",
+]
+
+[[task]]
+id = "proc-macro-expander-impact"
+kind = "impact"
+prompt = """Which types implement `ProcMacroExpander::expand` (the trait in \
+crates/hir-expand/src/proc_macro.rs), where is `expand` called through the trait object, and what \
+would break if it gained a new required parameter? Separate production code from tests. Answer in \
+at most 20 lines; do not modify any file."""
+expected = """The production implementation is `Expander` in crates/load-cargo/src/lib.rs. Test \
+implementations live in crates/test-fixture/src/lib.rs (several expanders) and \
+crates/hir-def/src/macro_expansion_tests/mod.rs. The trait-object call is in \
+`CustomProcMacroExpander::expand` in crates/hir-expand/src/proc_macro.rs, through the \
+`Arc<dyn ProcMacroExpander>` in the `ProcMacro` it looks up, which `expand_proc_macro` and `expand_speculative` in \
+crates/hir-expand/src/lib.rs reach. Every implementation and that call site would fail to compile."""
+items = [
+    "the trait in crates/hir-expand/src/proc_macro.rs",
+    "`Expander` in crates/load-cargo/src/lib.rs as the production implementation",
+    "the test implementations in crates/test-fixture/src/lib.rs",
+    "the test implementation in crates/hir-def/src/macro_expansion_tests/mod.rs",
+    "the trait-object call in `CustomProcMacroExpander::expand` in crates/hir-expand/src/proc_macro.rs",
+    "`expand_proc_macro` in crates/hir-expand/src/lib.rs reaching it",
+    "`expand_speculative` in crates/hir-expand/src/lib.rs reaching it",
+    "every implementation and the call site would fail to compile",
+]
+
+[[task]]
+id = "did-change-trace"
+kind = "orientation"
+prompt = """When the editor sends `textDocument/didChange`, how does the new file text end up in \
+the salsa database that analysis reads? Give the chain of functions from the notification handler \
+to the database setter, naming where the call goes through a `dyn SourceDatabase` trait object. \
+Answer in at most 20 lines; do not modify any file."""
+expected = """`handle_did_change_text_document` in crates/rust-analyzer/src/handlers/notification.rs \
+applies the edits and writes the text into the VFS (`set_file_contents`). The main loop then calls \
+`GlobalState::process_changes` (crates/rust-analyzer/src/global_state.rs), which collects VFS changes \
+into a `ChangeWithProcMacros` (`change_file`) and calls `AnalysisHost::apply_change` \
+(crates/ide/src/lib.rs). That calls `RootDatabase::apply_change` (crates/ide-db/src/apply_change.rs), \
+which applies the change; `FileChange::apply` in crates/base-db/src/change.rs calls \
+`set_file_text_with_durability` on `&mut dyn SourceDatabase`, dispatching to the `SourceDatabase` \
+implementation for `RootDatabase` in crates/ide-db/src/lib.rs, which sets the file-text input."""
+items = [
+    "`handle_did_change_text_document` in crates/rust-analyzer/src/handlers/notification.rs",
+    "the text written into the VFS with `set_file_contents`",
+    "`GlobalState::process_changes` in crates/rust-analyzer/src/global_state.rs",
+    "the change collected with `change_file` into a `ChangeWithProcMacros`",
+    "`AnalysisHost::apply_change` in crates/ide/src/lib.rs",
+    "`RootDatabase::apply_change` in crates/ide-db/src/apply_change.rs",
+    "`FileChange::apply` in crates/base-db/src/change.rs",
+    "`set_file_text_with_durability` called on `dyn SourceDatabase`",
+    "the `SourceDatabase` implementation for `RootDatabase` in crates/ide-db/src/lib.rs",
+]

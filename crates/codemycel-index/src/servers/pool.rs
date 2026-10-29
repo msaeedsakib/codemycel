@@ -121,6 +121,10 @@ impl<'r> ServerPool<'r> {
         if !provisioner.prerequisite_present(server) {
             return Err((DegradeReason::NoCargo, None));
         }
+        if let Some(error) = provisioner.toolchain_missing(server, &root_dir) {
+            tracing::warn!(root = %job.root.path, "{error}");
+            return Err((DegradeReason::ToolchainMissing, None));
+        }
         let located = provisioner.locate(server).map_err(|error| {
             tracing::warn!(root = %job.root.path, "{error}");
             (DegradeReason::NoServer, None)

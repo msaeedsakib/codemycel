@@ -248,7 +248,7 @@ pub struct EdgeLine {
     /// Lines of the edge's sites, in the source node's file, ascending and distinct.
     pub sites: Vec<u32>,
     pub verified_by: VerifiedBy,
-    /// The parent a dispatch-expanded caller reaches this node through.
+    /// The parent or overriding member a dispatch-expanded caller reaches this node through.
     pub via: Option<SemanticPath>,
 }
 

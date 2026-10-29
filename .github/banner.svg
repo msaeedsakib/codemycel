@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="220" viewBox="0 0 880 220" role="img" aria-label="codemycel: an LSP-verified code graph for coding agents">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#10241f"/>
+      <stop offset="1" stop-color="#070f0d"/>
+    </linearGradient>
+    <linearGradient id="hypha" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#bef264"/>
+    </linearGradient>
+    <linearGradient id="word" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#99f6e4"/>
+      <stop offset="1" stop-color="#d9f99d"/>
+    </linearGradient>
+    <radialGradient id="spore" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f7fee7"/>
+      <stop offset="0.5" stop-color="#d9f99d"/>
+      <stop offset="1" stop-color="#84cc16" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="880" height="220" rx="24" fill="url(#bg)"/>
+  <g fill="none" stroke="url(#hypha)" stroke-linecap="round" opacity="0.13" stroke-width="1.5">
+    <path d="M300 220 C360 170 420 190 470 140 C520 90 600 120 660 70 C700 37 760 40 880 10"/>
+    <path d="M470 140 C500 170 560 175 600 220"/>
+    <path d="M660 70 C690 100 740 110 790 160 C820 190 850 200 880 205"/>
+    <path d="M560 0 C580 40 620 50 660 70"/>
+  </g>
+  <g transform="translate(30 30) scale(1.25)">
+    <g fill="none" stroke="url(#hypha)" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M42 36 C35 45 28 55 21 64 C28 73 35 83 42 92" stroke-width="6.5"/>
+      <path d="M86 36 C93 45 100 55 107 64 C100 73 93 83 86 92" stroke-width="6.5"/>
+      <g stroke-width="2.6" opacity="0.95">
+        <path d="M21 64 C33 62 45 57 55 49"/>
+        <path d="M55 49 C61 56 66 67 73 79"/>
+        <path d="M107 64 C95 66 83 71 73 79"/>
+        <path d="M55 49 C61 43 67 40 72 33"/>
+        <path d="M73 79 C67 85 61 88 56 95"/>
+      </g>
+      <g stroke-width="1.5" opacity="0.55">
+        <path d="M55 49 C52 43 48 40 47 34"/>
+        <path d="M73 79 C76 85 80 88 81 94"/>
+        <path d="M64 63 C70 61 75 56 82 55"/>
+        <path d="M64 63 C58 66 53 71 46 73"/>
+        <path d="M72 33 C76 31 79 27 80 23"/>
+        <path d="M56 95 C52 97 49 101 48 105"/>
+      </g>
+    </g>
+    <circle cx="55" cy="49" r="9.5" fill="url(#spore)"/>
+    <circle cx="73" cy="79" r="9.5" fill="url(#spore)"/>
+    <circle cx="21" cy="64" r="7.5" fill="url(#spore)"/>
+    <circle cx="107" cy="64" r="7.5" fill="url(#spore)"/>
+    <circle cx="64" cy="63" r="4.5" fill="url(#spore)"/>
+    <circle cx="72" cy="33" r="5" fill="url(#spore)"/>
+    <circle cx="56" cy="95" r="5" fill="url(#spore)"/>
+    <circle cx="82" cy="55" r="3.5" fill="url(#spore)"/>
+    <circle cx="46" cy="73" r="3.5" fill="url(#spore)"/>
+  </g>
+  <text x="222" y="112" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="64" font-weight="700" letter-spacing="-1" fill="url(#word)">codemycel</text>
+  <text x="224" y="152" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" fill="#9fbfb6">An LSP-verified code graph for coding agents</text>
+  <text x="224" y="182" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#5f8a80">rust · typescript · javascript  —  an experiment</text>
+</svg>

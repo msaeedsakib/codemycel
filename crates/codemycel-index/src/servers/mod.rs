@@ -10,6 +10,7 @@ use codemycel_core::{
     DegradeReason, Edge, Language, LanguageAdapter, RepoPath, Root, ServerAdapter, ServerInfo,
     Unresolved, UnresolvedReason,
 };
+use codemycel_lsp::enrich::absolute;
 use codemycel_lsp::{EnrichOptions, IndexView, LspResolver, Provisioner, ServerLaunch};
 
 /// One root's share of a verify run.
@@ -99,6 +100,16 @@ impl Servers for BatchServers<'_> {
     fn enrich(&self, job: &RootJob<'_>) -> RootOutcome {
         if !self.provisioner.prerequisite_present(job.server) {
             return RootOutcome::degraded(job.view, job.files, DegradeReason::NoCargo, None);
+        }
+        let root_dir = absolute(job.repo_root, &job.root.path);
+        if let Some(error) = self.provisioner.toolchain_missing(job.server, &root_dir) {
+            tracing::warn!(root = %job.root.path, "{error}");
+            return RootOutcome::degraded(
+                job.view,
+                job.files,
+                DegradeReason::ToolchainMissing,
+                None,
+            );
         }
         let located = match self.provisioner.locate(job.server) {
             Ok(located) => located,

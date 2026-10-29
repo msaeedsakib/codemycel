@@ -5,6 +5,7 @@ use codemycel_core::store::{SCHEMA_VERSION, Store, StoreError, StoreRead, meta};
 use codemycel_core::{DegradeReason, Language, SyncOwner};
 use codemycel_index::{Lock, LockKind, Registry, RepoLocation, RepoRegistry, Watcher, sibling};
 use codemycel_lsp::Provisioner;
+use codemycel_lsp::enrich::absolute;
 use jiff::Timestamp;
 
 use super::ExitCode;
@@ -156,6 +157,12 @@ fn repository(
                             "      degraded: {reason}; fix: {}",
                             fix(reason, root.language)
                         );
+                        if reason == DegradeReason::ToolchainMissing
+                            && let Some(error) =
+                                provisioner.toolchain_missing(adapter, &absolute(repo, &root.path))
+                        {
+                            println!("      {error}");
+                        }
                     }
                     None => println!("      verified by {}", status.coverage),
                 }
@@ -203,6 +210,9 @@ fn fix(reason: DegradeReason, language: Language) -> String {
         }
         DegradeReason::NotReady => {
             "the server never became ready; check that the project builds, then run codemycel sync --full".to_owned()
+        }
+        DegradeReason::ToolchainMissing => {
+            "cargo cannot run in the root's directory, typically because the root pins a toolchain (rust-toolchain.toml) that is not installed; run rustup toolchain install in the root's directory, or rustup default stable when no toolchain is pinned, then run codemycel sync --full".to_owned()
         }
         DegradeReason::Crashed => format!(
             "the server crashed; run codemycel sync --full, or set [servers.{language}] build_scripts = false for untrusted code"

@@ -1,0 +1,70 @@
+diff --git a/crates/smtp/src/deliver_hook.rs b/crates/smtp/src/deliver_hook.rs
+--- a/crates/smtp/src/deliver_hook.rs
++++ b/crates/smtp/src/deliver_hook.rs
+@@ -58,6 +58,7 @@
+                 services.blobs().as_ref(),
+                 &relay.message,
+                 &request,
++                0,
+             ) {
+                 tracing::error!(error = %err, recipient = %relay.rcpt_to, "a relay copy could not be queued");
+             }
+@@ -87,6 +88,7 @@
+         services.blobs().as_ref(),
+         raw,
+         &request,
++        0,
+     )?;
+     Ok(())
+ }
+@@ -146,6 +148,7 @@
+         services.blobs().as_ref(),
+         &dsn,
+         &request,
++        0,
+     ) {
+         tracing::error!(error = %err, sender = %mail_from, "an over-quota bounce could not be queued");
+     }
+@@ -197,7 +200,7 @@
+             recipients: &queued,
+             first_due: now,
+         };
+-        match enqueue(store, services.blobs().as_ref(), &reply.message, &request) {
++        match enqueue(store, services.blobs().as_ref(), &reply.message, &request, 0) {
+             Ok(_) => {
+                 if let Err(err) = record_vacation_reply(store, account.id, &reply.to, reply.sent_at)
+                 {
+diff --git a/crates/smtp/src/queue_deliver.rs b/crates/smtp/src/queue_deliver.rs
+--- a/crates/smtp/src/queue_deliver.rs
++++ b/crates/smtp/src/queue_deliver.rs
+@@ -250,6 +250,7 @@
+                 recipients: &recipients,
+                 first_due: now,
+             },
++            0,
+         )?;
+         Ok(())
+     }
+diff --git a/crates/smtp/src/queue_enqueue.rs b/crates/smtp/src/queue_enqueue.rs
+--- a/crates/smtp/src/queue_enqueue.rs
++++ b/crates/smtp/src/queue_enqueue.rs
+@@ -24,6 +24,7 @@
+     blobs: &dyn BlobStore,
+     raw: &[u8],
+     request: &Enqueue<'_>,
++    delivery_priority: u8,
+ ) -> Result<Enqueued> {
+     // Body to the blob store first so the queue record never points at a missing blob.
+     let hash = blobs.put(raw)?;
+diff --git a/crates/smtp/src/sub_enqueue.rs b/crates/smtp/src/sub_enqueue.rs
+--- a/crates/smtp/src/sub_enqueue.rs
++++ b/crates/smtp/src/sub_enqueue.rs
+@@ -43,7 +43,7 @@
+         first_due: now,
+     };
+
+-    enqueue(store, blobs, signed, &request)
++    enqueue(store, blobs, signed, &request, 0)
+ }
+
+ fn now_seconds() -> u64 {

@@ -132,6 +132,7 @@ string_enum!(
         StartFailed => "start_failed",
         NotReady => "not_ready",
         Crashed => "crashed",
+        ToolchainMissing => "toolchain_missing",
     }
 );
 

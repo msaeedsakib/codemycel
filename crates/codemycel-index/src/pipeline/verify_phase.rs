@@ -331,7 +331,7 @@ pub fn write(tx: &mut Tx<'_>, verified: &Verified) -> Result<(), IndexError> {
 
 /// `implements` edges for every trait and interface of `file`, and `overrides` edges for their
 /// methods, as `resolver` reports them. Only structs, enums, classes and type aliases implement,
-/// and only methods override.
+/// and only methods and fields (a class property holding the function) override a method.
 fn implementer_edges(
     resolver: &dyn Resolver,
     file: &FileView,
@@ -358,7 +358,7 @@ fn implementer_edges(
         for method in file.members(&parent) {
             if method.kind == NodeKind::Method {
                 for overrider in resolver.implementers(method) {
-                    if overrider.kind == NodeKind::Method {
+                    if matches!(overrider.kind, NodeKind::Method | NodeKind::Field) {
                         edges.push(edge(overrider, method.clone(), EdgeKind::Overrides));
                     }
                 }

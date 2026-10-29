@@ -11,6 +11,12 @@ expected = """Starts at the axum routes in crates/http/src/dav_mount.rs (`/dav`,
 `dav_entry`), crosses into the irixmail_dav crate through `handler::handle` in \
 crates/dav/src/handler/mod.rs, and ends in crates/dav/src/handler/report.rs. Names files and \
 functions, not only crates."""
+items = [
+    "the axum routes `/dav` and `/dav/{*rest}` in crates/http/src/dav_mount.rs",
+    "`dav_entry` in crates/http/src/dav_mount.rs",
+    "`handler::handle` in crates/dav/src/handler/mod.rs",
+    "crates/dav/src/handler/report.rs as where the REPORT is answered",
+]
 
 [[task]]
 id = "batch-conditional-impact"
@@ -22,7 +28,13 @@ Answer in at most 20 lines; do not modify any file."""
 expected = """Lists the non-test call sites by file and function, notes that callers hold \
 `Arc<dyn Store>`/`&dyn Store` so every implementation must change with the trait, and names \
 `RocksdbStore::batch_conditional` in crates/store/src/rocksdb_write.rs as the production override \
-beside the trait's default body. Test stores that override it may be mentioned as also breaking."""
+beside the trait's default body. No test store overrides it; they all use the default body."""
+items = [
+    "`update_messages` in crates/mail/src/read.rs as the non-test call site",
+    "callers hold `dyn Store`, so every implementation must change with the trait",
+    "`RocksdbStore::batch_conditional` in crates/store/src/rocksdb_write.rs as the production override",
+    "the trait's default body in crates/store/src/traits_store.rs",
+]
 
 [[task]]
 id = "smtp-to-store-trace"
@@ -36,6 +48,13 @@ delivery or queueing (crates/mail/src/deliver.rs or crates/smtp/src/queue_enqueu
 `Store` trait method (`batch`, `put`, or `batch_conditional`) called on a trait object, which \
 dispatches to the matching method of `RocksdbStore` in crates/store/src/rocksdb_write.rs. The \
 dispatch step is named explicitly."""
+items = [
+    "the session's DATA handling in crates/smtp/src/session.rs",
+    "delivery or queueing in crates/mail/src/deliver.rs or crates/smtp/src/queue_enqueue.rs",
+    "a `Store` trait method (`batch`, `put` or `batch_conditional`) called on a trait object",
+    "the matching `RocksdbStore` method in crates/store/src/rocksdb_write.rs",
+    "the dynamic dispatch step named explicitly",
+]
 
 [[task]]
 id = "enqueue-impact"
@@ -43,10 +62,21 @@ kind = "impact"
 prompt = """Who calls `enqueue` in crates/smtp/src/queue_enqueue.rs, and what would break if it \
 gained a new required parameter? Separate production callers from tests. Answer in at most 15 \
 lines; do not modify any file."""
-expected = """Production callers include `crates/smtp/src/sub_enqueue.rs` and the bounce/DSN path in \
-crates/smtp/src/queue_deliver.rs, and anything above them that is reached transitively; the \
-tests in queue_deliver.rs and queue_enqueue.rs are listed separately. Each named call site \
-would fail to compile."""
+expected = """Production callers are `crates/smtp/src/sub_enqueue.rs`, the bounce/DSN path in \
+crates/smtp/src/queue_deliver.rs, the four hooks in crates/smtp/src/deliver_hook.rs \
+(`enqueue_relays`, `enqueue_forward`, `bounce_over_quota`, `respond_vacations`) and `boot` in \
+crates/irixmail/src/cmd_run.rs, plus anything above them that is reached transitively; the tests \
+(queue_deliver.rs, queue_enqueue.rs, queue_manager.rs and the crates/http queue and dashboard \
+tests) are listed separately. Each named call site would fail to compile."""
+items = [
+    "crates/smtp/src/sub_enqueue.rs as a production caller",
+    "the bounce or DSN path in crates/smtp/src/queue_deliver.rs as a production caller",
+    "crates/smtp/src/deliver_hook.rs as a production caller (`enqueue_relays`, `enqueue_forward`, `bounce_over_quota`, `respond_vacations`)",
+    "`boot` in crates/irixmail/src/cmd_run.rs as a production caller",
+    "callers reached transitively above them",
+    "the tests listed separately (queue_deliver.rs, queue_enqueue.rs, queue_manager.rs, crates/http queue and dashboard tests)",
+    "each named call site would fail to compile",
+]
 
 [[task]]
 id = "dkim-orientation"
@@ -58,3 +88,43 @@ expected = """Names the signer in crates/smtp/src/dkim_sign.rs (built with `from
 source in the directory crate's DKIM registry (crates/directory/src/dkim_registry.rs), and the \
 submission or outbound path that signs before enqueueing (for example \
 crates/smtp/src/sub_enqueue.rs)."""
+items = [
+    "the signer in crates/smtp/src/dkim_sign.rs",
+    "`from_key` building the signer",
+    "the DKIM registry in crates/directory/src/dkim_registry.rs as the key source",
+    "the submission or outbound path that signs before enqueueing, such as crates/smtp/src/sub_enqueue.rs",
+]
+
+[[task]]
+id = "enqueue-edit"
+kind = "edit"
+prompt = """Give `enqueue` in crates/smtp/src/queue_enqueue.rs a new required last parameter \
+`delivery_priority: u8`, and update every call site outside tests (`#[cfg(test)]` modules and \
+tests directories) to pass `0` for it. The function does not need to use the value yet. Do not edit \
+tests and do not change any other function's signature."""
+expected = """The signature gains `delivery_priority: u8` last. The production calls pass `0`: \
+`enqueue_relays`, `enqueue_forward`, `bounce_over_quota` and `respond_vacations` in \
+crates/smtp/src/deliver_hook.rs, `enqueue_submission_at` in crates/smtp/src/sub_enqueue.rs, \
+`raise_bounces` in crates/smtp/src/queue_deliver.rs, and `boot` in crates/irixmail/src/cmd_run.rs. \
+The workspace's production targets compile with no new errors."""
+items = [
+    "`enqueue_relays` in crates/smtp/src/deliver_hook.rs",
+    "`enqueue_forward` in crates/smtp/src/deliver_hook.rs",
+    "`bounce_over_quota` in crates/smtp/src/deliver_hook.rs",
+    "`respond_vacations` in crates/smtp/src/deliver_hook.rs",
+    "`enqueue_submission_at` in crates/smtp/src/sub_enqueue.rs",
+    "`raise_bounces` in crates/smtp/src/queue_deliver.rs",
+    "`boot` in crates/irixmail/src/cmd_run.rs",
+]
+sites = [
+    "crates/smtp/src/deliver_hook.rs:56",
+    "crates/smtp/src/deliver_hook.rs:85",
+    "crates/smtp/src/deliver_hook.rs:144",
+    "crates/smtp/src/deliver_hook.rs:200",
+    "crates/smtp/src/sub_enqueue.rs:46",
+    "crates/smtp/src/queue_deliver.rs:243",
+    "crates/irixmail/src/cmd_run.rs:196",
+]
+callee = "enqueue"
+check = "cargo"
+signature = "delivery_priority: u8"
